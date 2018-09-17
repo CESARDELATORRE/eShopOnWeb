@@ -8,19 +8,39 @@ The console application project `ProductRecommendation.Train` can be used to gen
 2) **(Optional) - Generate your own input training data:** The `assets/inputs` folder contains default training file  `orderItems.csv`. This file contains the data arranged in 3 columns: CustomerId, ProductId and Quantity. If you want to use your own training file, you should follow the same schema and replace current default training file.
 3) **Run the training model console app:** Hit F5 in Visual Studio. At the end of the execution, the output will be similar to this screenshot:
 ![image](/docs/images/train_console.png)
-4) **Copy the model files into the Dashboard app folder:** When the execution finishes, you can get the built model in `assets/output/productRecommendation.zip`.
-5) The model file must be copied into the **Infrastructure project** (`src/Infrastructure/Setup/model`) using the same name.
+4) **Copy the model file into the Infrastructure project:** By default, when the execution finishes, the model is saved at `assets/output/productRecommendation.zip`. Copy model file into  `src / Infrastructure / Setup / `[model](https://github.com/CESARDELATORRE/eShopOnWeb/tree/master/src/Infrastructure/Setup/model) using the same name.
 
 ## Code Walkthrough
 
 ### ML.NET: Model creation
+The model training source code is located at `src / ProductRecommentation.Train / Model / `[ModelBuilder.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/ProductRecommendation.Train/Model/ModelBuilder.cs).
+
 Before creating the model, in this case we need to pre-process the input data. The reason behind this is because we will use a method that is able to make only binary recommendations, and our Label feature (quantity) is a continuos variable. The pre-process will transform this continuous variable into a categorical variable with 2 states: recommend / not recommend (true / false).
 
 There are several methods for discretizing a continuous variable, in this case we will set a threshold, and then we will transform values over or equal the threshold to true (do recommend), otherwise, to false (do not recommend). Finally, the mean by product is used as a threshold. 
 
 Previous transformation is supported by the method `PreProcess()`. As result, we will add one column named `Recommend` holding the quantity discretized value (true / false).
 
-The training pipeline is built in the method `BuildModel()` and supported by the following components:
+```csharp
+var pipeline = new LearningPipeline();
+
+pipeline.Add(CollectionDataSource.Create(salesData));
+
+pipeline.Add(new CategoricalHashOneHotVectorizer(
+  (nameof(SalesRecommendationData.ProductId), 
+  nameof(SalesRecommendationData.ProductId) + "_OH")) { HashBits = 18 });
+pipeline.Add(new CategoricalHashOneHotVectorizer(
+  (nameof(SalesRecommendationData.CustomerId), 
+  nameof(SalesRecommendationData.CustomerId) + "_OH")) { HashBits = 18 });
+
+pipeline.Add(new ColumnConcatenator("Features", 
+nameof(SalesRecommendationData.ProductId) + "_OH",
+nameof(SalesRecommendationData.CustomerId) + "_OH"));
+
+pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier() { LearningRate = 0.05F, Iters = 1, LambdaLinear = 0.0002F });
+```
+
+The training pipeline is supported by the following components:
 * [CollectionDataSource.Create](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.data.collectiondatasource.create?view=ml-dotnet#Microsoft_ML_Data_CollectionDataSource_Create__1_System_Collections_Generic_IEnumerable___0__): The preprocessed data can be directly use as input for the pipeline.
 * [CategoricalHashOneHotVectorizer](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.categoricalhashonehotvectorizer?view=ml-dotnet): CustomerId and ProductId are transformed using a One Hot Encoding variant based on hashing
 * [ColumnConcatenator](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.columnconcatenator?view=ml-dotnet): Data needs to be combined into a single column (by default, named `Features`) as a prior step before the learner.
@@ -40,7 +60,7 @@ Additionally, we evaluate the accuracy of the model. This accuracy is measured u
 
 ### ML.NET Model Prediction
 The model created in former step, is used to make recommendations for users. When the user logs in the website, his homepage will display first recommended products for him/her, based on previous purchases.
-The source code of prediction core is in Infrastructure / Services / ProductRecommendationService.cs, inside the method `GetRecommendationsForUserAsync()`.
+The source code of prediction core is in `src / Infrastructure / Services / `[ProductRecommendationService.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/Infrastructure/Services/ProductRecommendationService.cs), inside the method `GetRecommendationsForUserAsync()`.
 ```csharp
 public async System.Threading.Tasks.Task<IEnumerable<string>> GetRecommendationsForUserAsync
     (string user, string[] products, int recommendationsInPage)
