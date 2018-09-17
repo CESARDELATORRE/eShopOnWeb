@@ -1,6 +1,6 @@
-## Create and Use the model
+## Create and Use the ML.NET model
 
-eShopOnWeb app comes with a previously trained model for product recommendation, but you can train your own model based in your own data. 
+eShopOnWebML app comes with a previously trained model for product recommendation, but you can train your own model based in your own data. 
 
 The console application project `ProductRecommendation.Train` can be used to generate the product recommendation model. You need to follow next steps in order to generate these models:
 
@@ -91,6 +91,10 @@ Password: Pass@word1
 The app runs generates the recommendations for that particular user (based on his orders history compared to other orders from other users) by using the ML.NET model and shows the first 6 recommendations on top of the regular product catalog, like in the following screenshot:
 
 ![image](https://user-images.githubusercontent.com/1712635/45646295-bc6dff00-ba77-11e8-8dd8-e8417c309a8c.png)
+
+## Running the web app with SQL Server hosting the database instead of In Memory database
+
+After cloning or downloading the web app sample, you should be able to run it using an In Memory database, immediately. That database is used for handling the Product Catalog and other typical entities. If you wish to use the sample with a persistent SQL Server database, you will need to modify the setup as explained in the original eShopOnWeb repo, here: https://github.com/dotnet-architecture/eShopOnWeb 
 
 ## Citation
 eShopOnWeb dataset is based on a public Online Retail Dataset from **UCI**: http://archive.ics.uci.edu/ml/datasets/online+retail
