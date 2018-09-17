@@ -25,6 +25,8 @@ namespace ProductRecommendation
             {
                 Console.Out.WriteLine(ex.Message);
             }
+
+            Console.ReadKey();
         }
     }
 }
