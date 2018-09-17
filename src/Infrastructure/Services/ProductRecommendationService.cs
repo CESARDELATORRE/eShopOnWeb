@@ -26,6 +26,18 @@ namespace Microsoft.eShopWeb.Infrastructure.Services
 
             var predictions = model.Predict(crossPredictions).ToArray();
 
+            //Count how many recommended products the user gets (with more or less probability..)
+            var numberOfRecommendedProducts = predictions.Where(x => x.Recommendation.IsTrue == true).Select(x => x.Recommendation).Count();
+
+            //Count how many recommended products the user gets (with more than 70% probability..)
+            var RecommendedProductsWithMoreThan70Percent = (from p in predictions
+                                                            orderby p.Probability descending
+                                                            where p.Recommendation.IsTrue == true && p.Probability > 0.7
+                                                            select new SalesPrediction { ProductId = p.ProductId, Probability = p.Probability, Recommendation = p.Recommendation });
+
+            var numberOfRecommendedProductsWithMoreThan70Percent = RecommendedProductsWithMoreThan70Percent.Count();
+
+
             return predictions.Where(p => p.Recommendation.IsTrue)
                 .OrderByDescending(p => p.Probability)
                 .Select(p => p.ProductId)
