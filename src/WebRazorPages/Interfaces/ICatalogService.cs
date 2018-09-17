@@ -7,7 +7,7 @@ namespace Microsoft.eShopWeb.RazorPages.Interfaces
 {
     public interface ICatalogService
     {
-        Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId);
+        Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId, string username, int recommendationsInPage);
         Task<IEnumerable<SelectListItem>> GetBrands();
         Task<IEnumerable<SelectListItem>> GetTypes();
     }

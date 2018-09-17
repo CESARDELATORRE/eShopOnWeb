@@ -3,6 +3,7 @@ using Microsoft.eShopWeb.ApplicationCore.Entities;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -37,8 +38,8 @@ namespace Microsoft.eShopWeb.Infrastructure.Data
 
                 if (!catalogContext.CatalogItems.Any())
                 {
-                    catalogContext.CatalogItems.AddRange(
-                        GetPreconfiguredItems());
+                    catalogContext.CatalogItems.AddRange(GetPreconfiguredItems());
+                    await catalogContext.CatalogItems.AddRangeAsync(GetExternalCatalog());
 
                     await catalogContext.SaveChangesAsync();
                 }
@@ -55,6 +56,17 @@ namespace Microsoft.eShopWeb.Infrastructure.Data
             }
         }
 
+        private static IEnumerable<CatalogItem> GetExternalCatalog()
+        {
+            FileInfo currentAssemblyLocation = new FileInfo(typeof(CatalogContextSeed).Assembly.Location);
+            var externalCatalog = CatalogItem.ReadFromCsv(Path.Combine(currentAssemblyLocation.Directory.FullName, "Setup", "data", "catalog.csv"));
+            foreach (var item in externalCatalog)
+            {
+                item.PictureUri = "http://catalogbaseurltobereplaced/images/products/" + "coming_soon.png"; //item.PictureUri;
+                yield return item;
+            }
+        }
+
         static IEnumerable<CatalogBrand> GetPreconfiguredCatalogBrands()
         {
             return new List<CatalogBrand>()
@@ -62,8 +74,9 @@ namespace Microsoft.eShopWeb.Infrastructure.Data
                 new CatalogBrand() { Brand = "Azure"},
                 new CatalogBrand() { Brand = ".NET" },
                 new CatalogBrand() { Brand = "Visual Studio" },
-                new CatalogBrand() { Brand = "SQL Server" }, 
-                new CatalogBrand() { Brand = "Other" }
+                new CatalogBrand() { Brand = "SQL Server" },
+                new CatalogBrand() { Brand = "Other" },
+                new CatalogBrand() { Brand = "Retail", Id = 100}
             };
         }
 
@@ -74,7 +87,8 @@ namespace Microsoft.eShopWeb.Infrastructure.Data
                 new CatalogType() { Type = "Mug"},
                 new CatalogType() { Type = "T-Shirt" },
                 new CatalogType() { Type = "Sheet" },
-                new CatalogType() { Type = "USB Memory Stick" }
+                new CatalogType() { Type = "USB Memory Stick" },
+                new CatalogType() { Type = "Retail", Id = 100 }
             };
         }
 

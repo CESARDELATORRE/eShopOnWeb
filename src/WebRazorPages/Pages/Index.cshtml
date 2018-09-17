@@ -29,6 +29,23 @@
     {
         <partial name="_pagination" for="CatalogModel.PaginationInfo" />
 
+        @if (Model.CatalogModel.RecommendedCatalogItems.Any())
+        {
+        <div class="esh-catalog-items row" style="background-color: lightyellow">
+            <div class="esh-catalog-items row" style="text-align: center;">
+                <span style="font-weight: bold">RECOMMENDED PRODUCTS FOR YOU</span> based in your shopping history
+                <br /><br />
+            </div>
+
+            @foreach (var catalogItem in Model.CatalogModel.RecommendedCatalogItems)
+            {
+                <div class="esh-catalog-item col-md-4">
+                    <partial name="_product" for="@catalogItem" />
+                </div>
+            }
+        </div>
+        }
+
         <div class="esh-catalog-items row">
             @foreach (var catalogItem in Model.CatalogModel.CatalogItems)
             {

@@ -96,6 +96,8 @@ namespace Microsoft.eShopWeb.RazorPages
             services.AddScoped<IBasketViewModelService, BasketViewModelService>();
             services.AddScoped<IOrderService, OrderService>();
             services.AddScoped<IOrderRepository, OrderRepository>();
+            services.AddScoped<ICatalogRepository, CatalogRepository>();
+            services.AddScoped<IProductRecommendationService, ProductRecommendationService>();
             services.AddScoped<CatalogService>();
             services.Configure<CatalogSettings>(Configuration);
             services.AddSingleton<IUriComposer>(new UriComposer(Configuration.Get<CatalogSettings>()));

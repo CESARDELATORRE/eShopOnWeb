@@ -9,6 +9,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.eShopWeb.Infrastructure.Services;
+using Microsoft.eShopWeb.Infrastructure.Data;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Microsoft.eShopWeb.RazorPages.Services
 {
@@ -23,22 +26,28 @@ namespace Microsoft.eShopWeb.RazorPages.Services
         private readonly IAsyncRepository<CatalogBrand> _brandRepository;
         private readonly IAsyncRepository<CatalogType> _typeRepository;
         private readonly IUriComposer _uriComposer;
+        private readonly ICatalogRepository catalogRepository;
+        private readonly IProductRecommendationService productRecommendationService;
 
         public CatalogService(
             ILoggerFactory loggerFactory,
             IRepository<CatalogItem> itemRepository,
             IAsyncRepository<CatalogBrand> brandRepository,
             IAsyncRepository<CatalogType> typeRepository,
-            IUriComposer uriComposer)
+            IUriComposer uriComposer,
+            ICatalogRepository catalogRepository,
+            IProductRecommendationService productRecommendationService)
         {
             _logger = loggerFactory.CreateLogger<CatalogService>();
             _itemRepository = itemRepository;
             _brandRepository = brandRepository;
             _typeRepository = typeRepository;
             _uriComposer = uriComposer;
+            this.catalogRepository = catalogRepository;
+            this.productRecommendationService = productRecommendationService;
         }
 
-        public async Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId)
+        public async Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId, string username, int recommendations)
         {
             _logger.LogInformation("GetCatalogItems called.");
 
@@ -79,10 +88,29 @@ namespace Microsoft.eShopWeb.RazorPages.Services
                 }
             };
 
+            if (pageIndex == 0 && !String.IsNullOrEmpty(username))
+                vm.RecommendedCatalogItems = (await GetRecommendations(username, recommendations)).ToArray();
+            else
+                vm.RecommendedCatalogItems = Enumerable.Empty<CatalogItemViewModel>();
+
             vm.PaginationInfo.Next = (vm.PaginationInfo.ActualPage == vm.PaginationInfo.TotalPages - 1) ? "is-disabled" : "";
             vm.PaginationInfo.Previous = (vm.PaginationInfo.ActualPage == 0) ? "is-disabled" : "";
 
             return vm;
+        }
+
+        private async Task<IEnumerable<CatalogItemViewModel>> GetRecommendations(string user, int recommendationsInPage)
+        {
+            var productIds = catalogRepository.GetAllProductIds().ToArray();
+            var recommendations = await productRecommendationService.GetRecommendationsForUserAsync(user, productIds, recommendationsInPage);
+            var productRecommendations = catalogRepository.GetAllProducts(recommendations.Select(c => int.Parse(c)), recommendationsInPage);
+            return productRecommendations.Select(i => new CatalogItemViewModel()
+            {
+                Id = i.Id,
+                Name = i.Name,
+                PictureUri = _uriComposer.ComposePicUri(i.PictureUri),
+                Price = i.Price
+            });
         }
 
         public async Task<IEnumerable<SelectListItem>> GetBrands()

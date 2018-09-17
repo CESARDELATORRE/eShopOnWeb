@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ProductRecommendation.Train": {
+      "commandName": "Project",
+      "commandLineArgs": "$(SolutionDir)assets"
+    }
+  }
+}
