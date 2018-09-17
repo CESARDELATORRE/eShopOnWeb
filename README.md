@@ -1,93 +1,102 @@
-# eShopOnWeb
+## Create and Use the ML.NET model
 
-Sample ASP.NET Core reference application, powered by Microsoft, demonstrating a single-process (monolithic) application architecture and deployment model. 
+eShopOnWebML app comes with a previously trained model for product recommendation, but you can train your own model based in your own data. 
 
-This reference application is meant to support the free .PDF download ebook: [Architecting Modern Web Applications with ASP.NET Core and Azure](https://aka.ms/webappebook), updated to **ASP.NET Core 2.1**.
+The console application project `ProductRecommendation.Train` can be used to generate the product recommendation model. You need to follow next steps in order to generate these models:
 
-You can also read the book in online pages at the .NET docs here: 
-https://docs.microsoft.com/en-us/dotnet/standard/modern-web-apps-azure-architecture/
+1) **Set VS default startup project:** Set `ProductRecommendation.Train` as starting project in Visual Studio
+2) **(Optional) - Generate your own input training data:** The `assets/inputs` folder contains default training file  `orderItems.csv`. This file contains the data arranged in 3 columns: CustomerId, ProductId and Quantity. If you want to use your own training file, you should follow the same schema and replace current default training file.
+3) **Run the training model console app:** Hit F5 in Visual Studio. At the end of the execution, the output will be similar to this screenshot:
+![image](/docs/images/train_console.png)
+4) **Copy the model file into the Infrastructure project:** By default, when the execution finishes, the model is saved at `assets/output/productRecommendation.zip`. Copy model file into  `src / Infrastructure / Setup / `[model](https://github.com/CESARDELATORRE/eShopOnWeb/tree/master/src/Infrastructure/Setup/model) using the same name.
 
-![image](https://user-images.githubusercontent.com/1712635/42467632-449688c2-8367-11e8-9323-81ab50a66006.png)
+## Code Walkthrough
 
-The **eShopOnWeb** sample is related to the [eShopOnContainers](https://github.com/dotnet/eShopOnContainers) sample application which, in that case, focuses on a microservices/containers-based application architecture. However, **eShopOnWeb** is much simpler in regards to its current functionality and focuses on traditional Web Application Development with a single deployment.
+### ML.NET: Model creation
+The model training source code is located at `src / ProductRecommentation.Train / Model / `[ModelBuilder.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/ProductRecommendation.Train/Model/ModelBuilder.cs).
 
-The goal for this sample is to demonstrate some of the principles and patterns described in the [eBook](https://aka.ms/webappebook). It is not meant to be an eCommerce reference application, and as such it does not implement many features that would be obvious and/or essential to a real eCommerce application.
+Before creating the model, in this case we need to pre-process the input data. The reason behind this is because we will use a method that is able to make only binary recommendations, and our Label feature (quantity) is a continuos variable. The pre-process will transform this continuous variable into a categorical variable with 2 states: recommend / not recommend (true / false).
 
-> ### VERSIONS
-> #### The `master` branch is currently running ASP.NET Core 2.1.
-> #### Older versions are tagged.
+There are several methods for discretizing a continuous variable, in this case we will set a threshold, and then we will transform values over or equal the threshold to true (do recommend), otherwise, to false (do not recommend). Finally, the mean by product is used as a threshold. 
 
+Previous transformation is supported by the method `PreProcess()`. As result, we will add one column named `Recommend` holding the quantity discretized value (true / false).
 
-## Topics (eBook TOC)
+```csharp
+var pipeline = new LearningPipeline();
 
-- Introduction
-- Characteristics of Modern Web Applications
-- Choosing Between Traditional Web Apps and SPAs
-- Architectural Principles
-- Common Web Application Architectures
-- Common Client Side Technologies
-- Developing ASP.NET Core MVC Apps
-- Working with Data in ASP.NET Core Apps
-- Testing ASP.NET Core MVC Apps
-- Development Process for Azure-Hosted ASP.NET Core Apps
-- Azure Hosting Recommendations for ASP.NET Core Web Apps
+pipeline.Add(CollectionDataSource.Create(salesData));
 
-## Running the sample
+pipeline.Add(new CategoricalHashOneHotVectorizer(
+  (nameof(SalesRecommendationData.ProductId), 
+  nameof(SalesRecommendationData.ProductId) + "_OH")) { HashBits = 18 });
+pipeline.Add(new CategoricalHashOneHotVectorizer(
+  (nameof(SalesRecommendationData.CustomerId), 
+  nameof(SalesRecommendationData.CustomerId) + "_OH")) { HashBits = 18 });
 
-After cloning or downloading the sample you should be able to run it using an In Memory database immediately.
+pipeline.Add(new ColumnConcatenator("Features", 
+nameof(SalesRecommendationData.ProductId) + "_OH",
+nameof(SalesRecommendationData.CustomerId) + "_OH"));
 
-If you wish to use the sample with a persistent database, you will need to run its Entity Framework Core migrations before you will be able to run the app, and update the `ConfigureServices` method in `Startup.cs` (see below).
-
-You can also run the samples in Docker (see below).
-
-### Configuring the sample to use SQL Server
-
-1. Update `Startup.cs`'s `ConfigureDevelopmentServices` method as follows:
-
-```
-        public void ConfigureDevelopmentServices(IServiceCollection services)
-        {
-            // use in-memory database
-            //ConfigureTestingServices(services);
-
-            // use real database
-            ConfigureProductionServices(services);
-
-        }
+pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier() { LearningRate = 0.05F, Iters = 1, LambdaLinear = 0.0002F });
 ```
 
-1. Ensure your connection strings in `appsettings.json` point to a local SQL Server instance.
+The training pipeline is supported by the following components:
+* [CollectionDataSource.Create](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.data.collectiondatasource.create?view=ml-dotnet#Microsoft_ML_Data_CollectionDataSource_Create__1_System_Collections_Generic_IEnumerable___0__): The preprocessed data can be directly use as input for the pipeline.
+* [CategoricalHashOneHotVectorizer](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.categoricalhashonehotvectorizer?view=ml-dotnet): CustomerId and ProductId are transformed using a One Hot Encoding variant based on hashing
+* [ColumnConcatenator](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.columnconcatenator?view=ml-dotnet): Data needs to be combined into a single column (by default, named `Features`) as a prior step before the learner.
+* [FieldAwareFactorizationMachineBinaryClassifier](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.trainers.fieldawarefactorizationmachinebinaryclassifier?view=ml-dotnet): The learner used by the pipeline, this algorithm evaluates the interaction between CustomerId and ProductId, and can be used with [sparse data](https://en.wikipedia.org/wiki/Sparse_matrix).
 
-2. Open a command prompt in the Web folder and execute the following commands:
-
-```
-dotnet restore
-dotnet ef database update -c catalogcontext -p ../Infrastructure/Infrastructure.csproj -s Web.csproj
-dotnet ef database update -c appidentitydbcontext -p ../Infrastructure/Infrastructure.csproj -s Web.csproj
-```
-
-These commands will create two separate databases, one for the store's catalog data and shopping cart information, and one for the app's user credentials and identity data.
-
-3. Run the application.
-The first time you run the application, it will seed both databases with data such that you should see products in the store, and you should be able to log in using the demouser@microsoft.com account.
-
-Note: If you need to create migrations, you can use these commands:
-```
--- create migration (from Web folder CLI)
-dotnet ef migrations add InitialModel --context catalogcontext -p ../Infrastructure/Infrastructure.csproj -s Web.csproj -o Data/Migrations
-
-dotnet ef migrations add InitialIdentityModel --context appidentitydbcontext -p ../Infrastructure/Infrastructure.csproj -s Web.csproj -o Identity/Migrations
+After building the pipeline, we train the recommendation model:
+```csharp
+var model = learningPipeline.Train<SalesData, SalesPrediction>();
 ```
 
-## Running the sample using Docker
-
-You can run both the Web and WebRazorPages samples at the same time by running these commands from the root folder (where the .sln file is located):
-
-```
-    docker-compose build
-    docker-compose up
+Finally, we save the recommendation model to local disk:
+```csharp
+await model.WriteAsync(modelLocation);
 ```
 
-You should be able to make requests to localhost:5106 and localhost:5107 once these commands complete.
+Additionally, we evaluate the accuracy of the model. This accuracy is measured using the [BinaryClassificationEvaluator](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.models.binaryclassificationevaluator?view=ml-dotnet), and the [Accuracy](https://en.wikipedia.org/wiki/Confusion_matrix) and [AUC](https://loneharoon.wordpress.com/2016/08/17/area-under-the-curve-auc-a-performance-metric/) metrics are displayed.
 
-You can run just the Web or WebRazorPages application by using the instructions located in their respective `Dockerfile` files in the root of the projects. Again, run these commands from the root of the solution (where the .sln file is located).
+### ML.NET Model Prediction
+The model created in former step, is used to make recommendations for users. When the user logs in the website, his homepage will display first recommended products for him/her, based on previous purchases.
+The source code of prediction core is in `src / Infrastructure / Services / `[ProductRecommendationService.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/Infrastructure/Services/ProductRecommendationService.cs), inside the method `GetRecommendationsForUserAsync()`.
+
+```csharp
+public async System.Threading.Tasks.Task<IEnumerable<string>> GetRecommendationsForUserAsync
+    (string user, string[] products, int recommendationsInPage)
+{
+    var model = await PredictionModel.ReadAsync<SalesData, SalesPrediction>(modelLocation);
+    var crossPredictions = from product in products                                   
+                            select new SalesData { CustomerId = user, ProductId = product };
+
+    var predictions = model.Predict(crossPredictions).ToArray();
+
+    return predictions.Where(p => p.Recommendation.IsTrue)
+        .OrderByDescending(p => p.Probability)
+        .Select(p => p.ProductId)
+        .Take(recommendationsInPage);
+}
+```
+
+The method receives as parameters the user and the products we need to check. The method then creates `SalesData` objects (one object per product received as parameter, using always the same customer). The model returns the probability and the label (recommended / not recommended), so the method returns only recommended predictions, ordered by probability and only the first ones (taken `recommendationsInPage` predictions).
+
+## Run the web app with the recommendations
+
+When running the web app, in order to see the recomendations, you first need to authenticate with a demo user with these credentials:
+
+User: demouser@microosft.com
+Password: Pass@word1
+
+The app runs generates the recommendations for that particular user (based on his orders history compared to other orders from other users) by using the ML.NET model and shows the first 6 recommendations on top of the regular product catalog, like in the following screenshot:
+
+![image](https://user-images.githubusercontent.com/1712635/45646295-bc6dff00-ba77-11e8-8dd8-e8417c309a8c.png)
+
+## Running the web app with SQL Server hosting the database instead of In Memory database
+
+After cloning or downloading the web app sample, you should be able to run it using an In Memory database, immediately. That database is used for handling the Product Catalog and other typical entities. If you wish to use the sample with a persistent SQL Server database, you will need to modify the setup as explained in the original eShopOnWeb repo, here: https://github.com/dotnet-architecture/eShopOnWeb 
+
+## Citation
+eShopOnWeb dataset is based on a public Online Retail Dataset from **UCI**: http://archive.ics.uci.edu/ml/datasets/online+retail
+> Daqing Chen, Sai Liang Sain, and Kun Guo, Data mining for the online retail industry: A case study of RFM model-based customer segmentation using data mining, Journal of Database Marketing and Customer Strategy Management, Vol. 19, No. 3, pp. 197â€“208, 2012 (Published online before print: 27 August 2012. doi: 10.1057/dbm.2012.17).
+
