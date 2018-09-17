@@ -81,11 +81,14 @@ public async System.Threading.Tasks.Task<IEnumerable<string>> GetRecommendations
 
 The method receives as parameters the user and the products we need to check. The method then creates `SalesData` objects (one object per product received as parameter, using always the same customer). The model returns the probability and the label (recommended / not recommended), so the method returns only recommended predictions, ordered by probability and only the first ones (taken `recommendationsInPage` predictions).
 
-When running the web app, and after authenticating the user with these credentials:
+## Run the web app with the recommendations
+
+When running the web app, in order to see the recomendations, you first need to authenticate with a demo user with these credentials:
+
 User: demouser@microosft.com
 Password: Pass@word1
 
-The app runs generates the recommendations by using the ML.NET model and shows the first 6 recommendations on top of the regular product catalog, like in the following screenshot:
+The app runs generates the recommendations for that particular user (based on his orders history compared to other orders from other users) by using the ML.NET model and shows the first 6 recommendations on top of the regular product catalog, like in the following screenshot:
 
 ![image](https://user-images.githubusercontent.com/1712635/45646295-bc6dff00-ba77-11e8-8dd8-e8417c309a8c.png)
 
