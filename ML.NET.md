@@ -61,6 +61,7 @@ Additionally, we evaluate the accuracy of the model. This accuracy is measured u
 ### ML.NET Model Prediction
 The model created in former step, is used to make recommendations for users. When the user logs in the website, his homepage will display first recommended products for him/her, based on previous purchases.
 The source code of prediction core is in `src / Infrastructure / Services / `[ProductRecommendationService.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/Infrastructure/Services/ProductRecommendationService.cs), inside the method `GetRecommendationsForUserAsync()`.
+
 ```csharp
 public async System.Threading.Tasks.Task<IEnumerable<string>> GetRecommendationsForUserAsync
     (string user, string[] products, int recommendationsInPage)
@@ -80,6 +81,13 @@ public async System.Threading.Tasks.Task<IEnumerable<string>> GetRecommendations
 
 The method receives as parameters the user and the products we need to check. The method then creates `SalesData` objects (one object per product received as parameter, using always the same customer). The model returns the probability and the label (recommended / not recommended), so the method returns only recommended predictions, ordered by probability and only the first ones (taken `recommendationsInPage` predictions).
 
+When running the web app, and after authenticating the user with these credentials:
+User: demouser@microosft.com
+Password: Pass@word1
+
+The app runs generates the recommendations by using the ML.NET model and shows the first 6 recommendations on top of the regular product catalog, like in the following screenshot:
+
+![image](https://user-images.githubusercontent.com/1712635/45646295-bc6dff00-ba77-11e8-8dd8-e8417c309a8c.png)
 
 ## Citation
 eShopOnWeb dataset is based on a public Online Retail Dataset from **UCI**: http://archive.ics.uci.edu/ml/datasets/online+retail
