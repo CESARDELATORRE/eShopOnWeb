@@ -52,7 +52,7 @@ namespace ProductRecommendation
 
         private static PredictionModel<SalesData, SalesPrediction> TrainModel(LearningPipeline learningPipeline)
         {
-            ConsoleWriteHeader("Training product forecasting model");
+            ConsoleWriteHeader("Training recommendation model");
             return learningPipeline.Train<SalesData, SalesPrediction>();
         }
 
@@ -63,6 +63,8 @@ namespace ProductRecommendation
 
             var sales = SalesData.ReadFromCsv(salesLocation);
 
+            // Calculate the mean Quantiy sold of each product
+            // This value will be used as a threshold for discretizing the Quantity value
             var means = (from s in sales
                          group s by s.ProductId into gpr
                          let lookup = gpr.ToLookup(y => y.ProductId, y => y.Quantity)
@@ -71,6 +73,7 @@ namespace ProductRecommendation
                              Mean = lookup[gpr.Key].Sum() / lookup[gpr.Key].Count()
                          }).ToDictionary(d => d.ProductId, d => d.Mean);
 
+            // Add a new Recommendation column based on the Quantity column
             var data = (from sale in sales
                     select new SalesRecommendationData
                     {
@@ -80,6 +83,7 @@ namespace ProductRecommendation
                         Recommendation = sale.Quantity >= means[sale.ProductId]
                     }).ToArray();
 
+            // Quick facts about the dataset
             var countFalses = data.Where(c => !c.Recommendation).Count();
             var countTrues = data.Where(c => c.Recommendation).Count();
             Console.WriteLine($"Recommendations: True={countTrues}, False={countFalses}");
@@ -99,11 +103,14 @@ namespace ProductRecommendation
 
             pipeline.Add(CollectionDataSource.Create(salesData));
 
+            // One Hot Encoding using Hash Vector. The new columns are named as the original ones, but adding the suffix "_OH"
             pipeline.Add(new CategoricalHashOneHotVectorizer((nameof(SalesRecommendationData.ProductId), nameof(SalesRecommendationData.ProductId) + "_OH")) { HashBits = 18 });
             pipeline.Add(new CategoricalHashOneHotVectorizer((nameof(SalesRecommendationData.CustomerId), nameof(SalesRecommendationData.CustomerId) + "_OH")) { HashBits = 18 });
 
+            // Combine *_OH columns into Features
             pipeline.Add(new ColumnConcatenator("Features", nameof(SalesRecommendationData.ProductId) + "_OH", nameof(SalesRecommendationData.CustomerId) + "_OH"));
 
+            // Adds a binary classifier learner, using the Field Factorization Machines based on libFFM 
             pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier());
 
             return pipeline;
@@ -117,6 +124,7 @@ namespace ProductRecommendation
             var evaluator = new BinaryClassificationEvaluator();
             var metrics = evaluator.Evaluate(model, testData);
 
+            // These metrics are overstimated as we are using for evaluation the same training dataset 
             Console.WriteLine("Accuracy is: " + metrics.Accuracy);
             Console.WriteLine("AUC is: " + metrics.Auc);
         }
