@@ -19,7 +19,7 @@ Before creating the model, in this case we need to pre-process the input data. T
 
 There are several methods for discretizing a continuous variable, in this case we will set a threshold, and then we will transform values over or equal the threshold to true (do recommend), otherwise, to false (do not recommend). Finally, the mean by product is used as a threshold. 
 
-Previous transformation is supported by the method `PreProcess()`. As result, we will add one column named `Recommend` holding the quantity discretized value (true / false).
+Previous transformation is supported by the method `PreProcess()`. As result, we will add one column named `Recommend` holding Quantity as a discretized value (true / false).
 
 ```csharp
 var pipeline = new LearningPipeline();
@@ -42,8 +42,8 @@ pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier() { LearningRate
 
 The training pipeline is supported by the following components:
 * [CollectionDataSource.Create](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.data.collectiondatasource.create?view=ml-dotnet#Microsoft_ML_Data_CollectionDataSource_Create__1_System_Collections_Generic_IEnumerable___0__): The preprocessed data can be directly use as input for the pipeline.
-* [CategoricalHashOneHotVectorizer](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.categoricalhashonehotvectorizer?view=ml-dotnet): CustomerId and ProductId are transformed using a One Hot Encoding variant based on hashing
-* [ColumnConcatenator](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.columnconcatenator?view=ml-dotnet): Data needs to be combined into a single column (by default, named `Features`) as a prior step before the learner.
+* [CategoricalHashOneHotVectorizer](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.categoricalhashonehotvectorizer?view=ml-dotnet): CustomerId and ProductId are transformed using a [One Hot Encoding](https://en.wikipedia.org/wiki/One-hot) variant based on hashing.
+* [ColumnConcatenator](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.columnconcatenator?view=ml-dotnet): Data needs to be combined into a single column (by default, named `Features`) as a prior step before the learner starts executing.
 * [FieldAwareFactorizationMachineBinaryClassifier](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.trainers.fieldawarefactorizationmachinebinaryclassifier?view=ml-dotnet): The learner used by the pipeline, this algorithm evaluates the interaction between CustomerId and ProductId, and can be used with [sparse data](https://en.wikipedia.org/wiki/Sparse_matrix).
 
 After building the pipeline, we train the recommendation model:
@@ -58,7 +58,7 @@ await model.WriteAsync(modelLocation);
 
 Additionally, we evaluate the accuracy of the model. This accuracy is measured using the [BinaryClassificationEvaluator](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.models.binaryclassificationevaluator?view=ml-dotnet), and the [Accuracy](https://en.wikipedia.org/wiki/Confusion_matrix) and [AUC](https://loneharoon.wordpress.com/2016/08/17/area-under-the-curve-auc-a-performance-metric/) metrics are displayed.
 
-### ML.NET Model Prediction
+### ML.NET: Model Prediction
 The model created in former step, is used to make recommendations for users. When the user logs in the website, his homepage will display first recommended products for him/her, based on previous purchases.
 The source code of prediction core is in `src / Infrastructure / Services / `[ProductRecommendationService.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/Infrastructure/Services/ProductRecommendationService.cs), inside the method `GetRecommendationsForUserAsync()`.
 
@@ -85,7 +85,8 @@ The method receives as parameters the user and the products we need to check. Th
 
 When running the web app, in order to see the recomendations, you first need to authenticate with a demo user with these credentials:
 
-User: demouser@microosft.com
+User: demouser@microsoft.com
+
 Password: Pass@word1
 
 The app runs generates the recommendations for that particular user (based on his orders history compared to other orders from other users) by using the ML.NET model and shows the first 6 recommendations on top of the regular product catalog, like in the following screenshot:

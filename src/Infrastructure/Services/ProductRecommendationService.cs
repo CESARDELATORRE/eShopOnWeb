@@ -31,15 +31,15 @@ namespace Microsoft.eShopWeb.Infrastructure.Services
 
             //Count how many recommended products the user gets (with more than 70% probability..)
             var RecommendedProductsWithMoreThan70Percent = (from p in predictions
-                                                            orderby p.Probability descending
-                                                            where p.Recommendation.IsTrue == true && p.Probability > 0.7
-                                                            select new SalesPrediction { ProductId = p.ProductId, Probability = p.Probability, Recommendation = p.Recommendation });
+                                                            orderby p.Score descending
+                                                            where p.Recommendation.IsTrue == true && p.Score > 0.7
+                                                            select new SalesPrediction { ProductId = p.ProductId, Score = p.Score, Recommendation = p.Recommendation });
 
             var numberOfRecommendedProductsWithMoreThan70Percent = RecommendedProductsWithMoreThan70Percent.Count();
 
 
             return predictions.Where(p => p.Recommendation.IsTrue)
-                .OrderByDescending(p => p.Probability)
+                .OrderByDescending(p => p.Score)
                 .Select(p => p.ProductId)
                 .Take(recommendationsInPage);
         }

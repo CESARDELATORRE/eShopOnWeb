@@ -9,6 +9,7 @@ using Microsoft.ML.Transforms;
 using Microsoft.ML.Data;
 using Microsoft.ML.Models;
 using System;
+using static CustomerSegmentation.Model.ModelHelpers;
 
 namespace ProductRecommendation
 {
@@ -26,22 +27,33 @@ namespace ProductRecommendation
         public async Task BuildAndTrain()
         {
             var preProcessData = PreProcess(productsLocation);
+
             var learningPipeline = BuildModel(preProcessData);
 
-            ConsoleWriteHeader("Training product forecasting model");
-            var model = learningPipeline.Train<SalesData, SalesPrediction>();
+            PredictionModel<SalesData, SalesPrediction> model = TrainModel(learningPipeline);
 
             if (!string.IsNullOrEmpty(modelLocation))
             {
-                ConsoleWriteHeader("Save model to local file");
-                ModelHelpers.DeleteAssets(modelLocation);
-                await model.WriteAsync(modelLocation);
-                Console.WriteLine($"Model saved: {modelLocation}");
+                await SaveModel(model);
             }
 
             //var pred = model.Predict(new SalesData { CustomerId = "b0b3d87a-a904-46ac-8bd4-fd561a5c2dd3", ProductId = "1000" });
 
-            Evaluate(preProcessData, model);
+            EvaluateModel(preProcessData, model);
+        }
+
+        private async Task SaveModel(PredictionModel<SalesData, SalesPrediction> model)
+        {
+            ConsoleWriteHeader("Save model to local file");
+            ModelHelpers.DeleteAssets(modelLocation);
+            await model.WriteAsync(modelLocation);
+            Console.WriteLine($"Model saved: {modelLocation}");
+        }
+
+        private static PredictionModel<SalesData, SalesPrediction> TrainModel(LearningPipeline learningPipeline)
+        {
+            ConsoleWriteHeader("Training product forecasting model");
+            return learningPipeline.Train<SalesData, SalesPrediction>();
         }
 
         protected IEnumerable<SalesRecommendationData> PreProcess(string salesLocation)
@@ -92,12 +104,12 @@ namespace ProductRecommendation
 
             pipeline.Add(new ColumnConcatenator("Features", nameof(SalesRecommendationData.ProductId) + "_OH", nameof(SalesRecommendationData.CustomerId) + "_OH"));
 
-            pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier() { LearningRate = 0.05F, Iters = 1, LambdaLinear = 0.0002F });
+            pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier());
 
             return pipeline;
         }
 
-        protected void Evaluate(IEnumerable<SalesRecommendationData> salesData, PredictionModel<SalesData, SalesPrediction> model)
+        protected void EvaluateModel(IEnumerable<SalesRecommendationData> salesData, PredictionModel<SalesData, SalesPrediction> model)
         {
             ConsoleWriteHeader("Evaluate model");
             var testData = CollectionDataSource.Create(salesData);
@@ -107,20 +119,6 @@ namespace ProductRecommendation
 
             Console.WriteLine("Accuracy is: " + metrics.Accuracy);
             Console.WriteLine("AUC is: " + metrics.Auc);
-        }
-
-        static void ConsoleWriteHeader(params string [] lines)
-        {
-            var defaultColor = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            var maxLength = lines.Select(x => x.Length).Max();
-            Console.WriteLine(" ");
-            foreach (var line in lines)
-            {
-                Console.WriteLine(line);
-            }
-            Console.WriteLine(new String('#', maxLength));
-            Console.ForegroundColor = defaultColor;
         }
     }
 }

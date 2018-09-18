@@ -30,48 +30,18 @@ namespace CustomerSegmentation.Model
             return location;
         }
 
-        //public static IEnumerable<string> Columns<T>() where T : class
-        //{
-        //    return typeof(T).GetProperties().Select(p => p.Name);
-        //}
-
-        //public static IEnumerable<string> Columns<T, U>() where T : class
-        //{
-        //    var typeofU = typeof(U);
-        //    return typeof(T).GetProperties().Where(c => c.PropertyType == typeofU).Select(p => p.Name);
-        //}
-
-        //public static IEnumerable<string> Columns<T, U, V>() where T : class
-        //{
-        //    var typeofUV = new[] { typeof(U), typeof(V) };
-        //    return typeof(T).GetProperties().Where(c => typeofUV.Contains(c.PropertyType)).Select(p => p.Name);
-        //}
-
-        //public static IEnumerable<string> Columns<T, U, V, W>() where T : class
-        //{
-        //    var typeofUVW = new[] { typeof(U), typeof(V), typeof(W) };
-        //    return typeof(T).GetProperties().Where(c => typeofUVW.Contains(c.PropertyType)).Select(p => p.Name);
-        //}
-
-        //public static string[] ColumnsNumerical<T>() where T : class
-        //{
-        //    return Columns<T, float, int>().ToArray();
-        //}
-
-        //public static string[] ColumnsString<T>() where T : class
-        //{
-        //    return Columns<T, string>().ToArray();
-        //}
-
-        //public static string[] ColumnsDateTime<T>() where T : class
-        //{
-        //    return Columns<T, DateTime>().ToArray();
-        //}
-
-        //public static long StopAndElapsedMilliseconds(this Stopwatch stopwatch)
-        //{
-        //    stopwatch.Stop();
-        //    return stopwatch.ElapsedMilliseconds;
-        //}
+        public static void ConsoleWriteHeader(params string[] lines)
+        {
+            var defaultColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine(" ");
+            foreach (var line in lines)
+            {
+                Console.WriteLine(line);
+            }
+            var maxLength = lines.Select(x => x.Length).Max();
+            Console.WriteLine(new String('#', maxLength));
+            Console.ForegroundColor = defaultColor;
+        }
     }
 }

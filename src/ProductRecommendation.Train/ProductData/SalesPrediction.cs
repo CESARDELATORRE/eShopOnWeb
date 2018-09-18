@@ -13,7 +13,7 @@ namespace ProductRecommendation.Train.ProductData
         public DvBool Recommendation;
 
         [ColumnName("Score")]
-        public float Probability { get; set; }
+        public float Score { get; set; }
     }
 
 }
