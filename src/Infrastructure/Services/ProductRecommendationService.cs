@@ -29,16 +29,16 @@ namespace Microsoft.eShopWeb.Infrastructure.Services
             // Execute the recommendation model with previous generated data
             var predictions = model.Predict(crossPredictions).ToArray();
 
-            //Count how many recommended products the user gets (with more or less probability..)
+            //Count how many recommended products the user gets (with more or less score..)
             var numberOfRecommendedProducts = predictions.Where(x => x.Recommendation.IsTrue == true).Select(x => x.Recommendation).Count();
 
-            //Count how many recommended products the user gets (with more than 70% probability..)
-            var RecommendedProductsWithMoreThan70Percent = (from p in predictions
+            //Count how many recommended products the user gets (with more than 0.7 score..)
+            var RecommendedProductsOverThreshold = (from p in predictions
                                                             orderby p.Score descending
                                                             where p.Recommendation.IsTrue == true && p.Score > 0.7
                                                             select new SalesPrediction { ProductId = p.ProductId, Score = p.Score, Recommendation = p.Recommendation });
 
-            var numberOfRecommendedProductsWithMoreThan70Percent = RecommendedProductsWithMoreThan70Percent.Count();
+            var numberOfRecommendedProductsOverThreshold = RecommendedProductsOverThreshold.Count();
 
             // Return (recommendationsInPage) product Ids ordered by Score
             return predictions
