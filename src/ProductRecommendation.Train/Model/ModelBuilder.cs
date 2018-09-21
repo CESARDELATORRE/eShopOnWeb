@@ -1,13 +1,7 @@
 ﻿using CustomerSegmentation.Model;
-using Microsoft.ML.Legacy;
-using Microsoft.ML.Legacy.Trainers;
 using ProductRecommendation.Train.ProductData;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using System.Linq;
-using Microsoft.ML.Legacy.Transforms;
-using Microsoft.ML.Legacy.Data;
-using Microsoft.ML.Legacy.Models;
 using System;
 using static CustomerSegmentation.Model.ModelHelpers;
 using Microsoft.ML.Runtime.Data;
@@ -15,7 +9,7 @@ using Microsoft.ML.Runtime.Api;
 using Microsoft.ML.Runtime.FactorizationMachine;
 using Microsoft.ML.Core.Data;
 using System.IO;
-using Microsoft.ML.Transforms;
+using Microsoft.ML.Runtime;
 
 namespace ProductRecommendation
 {
@@ -45,9 +39,10 @@ namespace ProductRecommendation
                 SaveModel(model, modelLocation);
             }
 
-            //var pred = model.Predict(new SalesData { CustomerId = "b0b3d87a-a904-46ac-8bd4-fd561a5c2dd3", ProductId = "1000" });
-
-            //EvaluateModel(preProcessData, model);
+            // These metrics are overstimated as we are using for evaluation the same training dataset 
+            // REVIEW!!
+            // metrics do not work (always zero)
+            EvaluateModel(model.Transform(trainData));
         }
 
         public void Test()
@@ -60,7 +55,6 @@ namespace ProductRecommendation
         {
             ConsoleWriteHeader("Save model to local file");
             ModelHelpers.DeleteAssets(modelLocation);
-            //await model.WriteAsync(modelLocation);
             using (var fs = File.Create(modelLocation))
                 model.SaveTo(env, fs);
             Console.WriteLine($"Model saved: {modelLocation}");
@@ -119,17 +113,24 @@ namespace ProductRecommendation
             const string customerColumnOneHotEnc = customerColumn + "_OHE";
             const string productColumn = nameof(SalesRecommendationData.ProductId);
             const string productColumnOneHotEnc = productColumn + "_OHE";
-            //const string featuresColumn = "Features";
-            const string labelColumn = "Label";
+            const string featuresColumn = DefaultColumnNames.Features;
+            const string labelColumn = DefaultColumnNames.Label;
 
             var dataview = ComponentCreation.CreateDataView(env, salesData.ToList());
+
+            // REVIEW!!
+            // Using HashEstimator (instead of CategoricalEstimator), I've got some weird errors
+            //var pipe = new HashEstimator(env, new[] {
+            //    new HashTransformer.ColumnInfo(productColumn, productColumnOneHotEnc),
+            //    new HashTransformer.ColumnInfo(customerColumn, customerColumnOneHotEnc)
+            //}).Append(new ConcatEstimator(env, featuresColumn, productColumnOneHotEnc, customerColumnOneHotEnc)); ;
 
             var pipe = new CategoricalEstimator(env, new[] {
                 new CategoricalEstimator.ColumnInfo(productColumn, productColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
                 new CategoricalEstimator.ColumnInfo(customerColumn, customerColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
-            });
+            }).Append(new ConcatEstimator(env, featuresColumn, productColumnOneHotEnc, customerColumnOneHotEnc));
 
-            IEstimator<ITransformer> est = new FieldAwareFactorizationMachineTrainer(env, labelColumn, new[] { customerColumnOneHotEnc, productColumnOneHotEnc },
+            IEstimator<ITransformer> est = new FieldAwareFactorizationMachineTrainer(env, labelColumn, new[] { featuresColumn },
                 advancedSettings: s =>
                 {
                     s.Shuffle = true;
@@ -137,63 +138,18 @@ namespace ProductRecommendation
                     s.Caching = Microsoft.ML.Runtime.EntryPoints.CachingOptions.Memory;
                 });
 
-            //var pipe = new HashEstimator(env, new[] {
-            //    new HashTransformer.ColumnInfo(productColumn, productColumnOneHotEnc),
-            //    new HashTransformer.ColumnInfo(customerColumn, customerColumnOneHotEnc)
-            //});
-
             // inspect data
             var trainData = pipe.Fit(dataview).Transform(dataview);
             var columnNames = trainData.Schema.GetColumnNames().ToArray();
             var trainDataAsEnumerable = trainData.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
 
             return (dataview, pipe.Append(est));
-
-            //var trainData = pipe.Fit(dataview).Transform(dataview);
-
-            //var concat = new ConcatTransform(env, 
-            //    new ConcatTransform.ColumnInfo(featuresColumn, customerColumnOneHotEnc, productColumnOneHotEnc)
-            //    );
-
-            //var data = concat.Transform(pipeline.Fit(dataview).Transform(dataview));
-
-            //var trainRoles = new RoleMappedData(data, label: "Label", feature: featuresColumn);
-            //var trainer = new FieldAwareFactorizationMachineTrainer(env, new FieldAwareFactorizationMachineTrainer.Arguments());
-            //var model = trainer.Train(new Microsoft.ML.Runtime.TrainContext(trainRoles));
-
-            //return (trainData, est);
-            //var trainTransformer = est.Fit(trainData);
-
-            //model.Save(new Microsoft.ML.Runtime.Model.ModelSaveContext())
-
-
-            //IDataScorerTransform scorer = ScoreUtils.GetScorer(model, trainRoles, env, trainRoles.Schema);
-
-            // Create prediction engine and test predictions.
-            //var predictor = env.CreatePredictionEngine<SalesData, SalesPrediction>(scorer);
-
-
-            //pipe.
-
-            //var pipeline = new LearningPipeline();
-
-            //pipeline.Add(CollectionDataSource.Create(salesData));
-
-            //// One Hot Encoding using Hash Vector. The new columns are named as the original ones, but adding the suffix "_OH"
-            //pipeline.Add(new CategoricalHashOneHotVectorizer((nameof(SalesRecommendationData.ProductId), nameof(SalesRecommendationData.ProductId) + "_OH")) { HashBits = 18 });
-            //pipeline.Add(new CategoricalHashOneHotVectorizer((nameof(SalesRecommendationData.CustomerId), nameof(SalesRecommendationData.CustomerId) + "_OH")) { HashBits = 18 });
-
-            //// Combine *_OH columns into Features
-            //pipeline.Add(new ColumnConcatenator("Features", nameof(SalesRecommendationData.ProductId) + "_OH", nameof(SalesRecommendationData.CustomerId) + "_OH"));
-
-            //// Adds a binary classifier learner, using the Field Factorization Machines based on libFFM 
-            //pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier());
-
-            //return pipeline;
         }
 
         protected PredictionFunction<SalesData, SalesPrediction> LoadModel(string modelLocation)
         {
+            ConsoleWriteHeader("Load Model");
+            Console.WriteLine($"Model file location: {modelLocation}");
             using (var file = File.OpenRead(modelLocation))
             {
                 return TransformerChain
@@ -204,24 +160,64 @@ namespace ProductRecommendation
 
         protected IEnumerable<SalesPrediction> PredictDataUsingModel(string testFileLocation, PredictionFunction<SalesData, SalesPrediction> model)
         {
+            ConsoleWriteHeader("Predict data");
             var testData = SalesData.ReadFromCsv(testFileLocation);
             foreach (var item in testData)
             {
                 yield return model.Predict(item);
             }
+            Console.WriteLine($"Number of predictions: {testData.Count()}");
         }
 
-        protected void EvaluateModel(IEnumerable<SalesRecommendationData> salesData, PredictionModel<SalesData, SalesPrediction> model)
+        protected void EvaluateModel(IDataView salesData)
         {
             ConsoleWriteHeader("Evaluate model");
-            var testData = CollectionDataSource.Create(salesData);
 
-            var evaluator = new BinaryClassificationEvaluator();
-            var metrics = evaluator.Evaluate(model, testData);
+            var evaluator = new BinaryClassifierEvaluator(env, new BinaryClassifierEvaluator.Arguments());
+            var metrics = evaluator.Evaluate(env, salesData);
 
-            // These metrics are overstimated as we are using for evaluation the same training dataset 
             Console.WriteLine("Accuracy is: " + metrics.Accuracy);
             Console.WriteLine("AUC is: " + metrics.Auc);
+        }
+    }
+
+    /// <summary>
+    /// This class is based on code from ML.NET
+    /// </summary>
+    public static class BinaryClassifierEvaluatorExtensions
+    {
+        public static SimpleBinaryClassificationMetrics Evaluate(this BinaryClassifierEvaluator self, IHostEnvironment env, IDataView data, string labelColumn = DefaultColumnNames.Label,
+            string probabilityColumn = DefaultColumnNames.Probability)
+        {
+            var ci = EvaluateUtils.GetScoreColumnInfo(env, data.Schema, null, DefaultColumnNames.Score, MetadataUtils.Const.ScoreColumnKind.BinaryClassification);
+            var rmd = BuildRoleMappedData(data, labelColumn, probabilityColumn, ci.Name);
+
+            var metricsDict = self.Evaluate(rmd);
+            return BuildMetrics(env, metricsDict);
+        }
+
+        private static RoleMappedData BuildRoleMappedData(IDataView data, string labelColumn, string probabilityColumn, string scoreColumn)
+        {
+            var map = new KeyValuePair<RoleMappedSchema.ColumnRole, string>[]
+            {
+                RoleMappedSchema.CreatePair(MetadataUtils.Const.ScoreValueKind.Probability, probabilityColumn),
+                RoleMappedSchema.CreatePair(MetadataUtils.Const.ScoreValueKind.Score, scoreColumn)
+            };
+            var rmd = new RoleMappedData(data, labelColumn, DefaultColumnNames.Features, opt: true, custom: map);
+            return rmd;
+        }
+
+        private static SimpleBinaryClassificationMetrics BuildMetrics(IHostEnvironment env, Dictionary<string, IDataView> metricsDict)
+        {
+            var overallMetrics = metricsDict[MetricKinds.OverallMetrics];
+            var metricsEnumerable = overallMetrics.AsEnumerable<SimpleBinaryClassificationMetrics>(env, true, ignoreMissingColumns: true);
+            return metricsEnumerable.Single();
+        }
+
+        public sealed class SimpleBinaryClassificationMetrics
+        {
+            public double Auc { get; private set; }
+            public double Accuracy { get; private set; }
         }
     }
 }

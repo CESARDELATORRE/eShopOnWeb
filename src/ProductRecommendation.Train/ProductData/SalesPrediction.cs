@@ -14,6 +14,9 @@ namespace ProductRecommendation.Train.ProductData
 
         [ColumnName("Score")]
         public float Score { get; set; }
+
+        [ColumnName("Probability")]
+        public float Probability { get; set; }
     }
 
 }

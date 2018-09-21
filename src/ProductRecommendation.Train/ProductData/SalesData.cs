@@ -1,4 +1,7 @@
-﻿using Microsoft.ML.Runtime.Api;
+﻿using Microsoft.ML.Data;
+using Microsoft.ML.Runtime;
+using Microsoft.ML.Runtime.Api;
+using Microsoft.ML.Runtime.Data;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -33,6 +36,19 @@ namespace ProductRecommendation.Train.ProductData
                     Quantity = int.Parse(x[2])
                 });
         }
+
+
+        public static IEnumerable<SalesData> ReadFromCsv(IHostEnvironment env, string file)
+        {
+            var reader = TextLoader.CreateReader<SalesData>(env, ctx => new SalesData
+            {
+                CustomerId = ctx.LoadText(1).ToString(),
+                ProductId = ctx.LoadText(2).ToString(),
+                Quantity = int.Parse(ctx.LoadDouble(3).ToString())
+            });
+
+            return reader.Read(new MultiFileSource(file)).AsDynamic.AsEnumerable<SalesData>(env, false);
+        }
     }
 
     public class SalesRecommendationData : SalesData
@@ -47,6 +63,6 @@ namespace ProductRecommendation.Train.ProductData
 
         public float[] ProductId_OHE { get; set; }
 
-        //public float[] Features { get; set; }
+        public float[] Features { get; set; }
     }
 }
