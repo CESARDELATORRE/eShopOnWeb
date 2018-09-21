@@ -11,7 +11,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.eShopWeb.Infrastructure.Services;
 using Microsoft.eShopWeb.Infrastructure.Data;
-using Microsoft.AspNetCore.Mvc;
 
 namespace Microsoft.eShopWeb.RazorPages.Services
 {
@@ -89,7 +88,7 @@ namespace Microsoft.eShopWeb.RazorPages.Services
             };
 
             if (pageIndex == 0 && !String.IsNullOrEmpty(username))
-                vm.RecommendedCatalogItems = (await GetRecommendations(username, recommendations)).ToArray();
+                vm.RecommendedCatalogItems = (GetRecommendations(username, recommendations)).ToArray();
             else
                 vm.RecommendedCatalogItems = Enumerable.Empty<CatalogItemViewModel>();
 
@@ -99,10 +98,10 @@ namespace Microsoft.eShopWeb.RazorPages.Services
             return vm;
         }
 
-        private async Task<IEnumerable<CatalogItemViewModel>> GetRecommendations(string user, int recommendationsInPage)
+        private IEnumerable<CatalogItemViewModel> GetRecommendations(string user, int recommendationsInPage)
         {
             var productIds = catalogRepository.GetAllProductIds().ToArray();
-            var recommendations = await productRecommendationService.GetRecommendationsForUserAsync(user, productIds, recommendationsInPage);
+            var recommendations = productRecommendationService.GetRecommendationsForUser(user, productIds, recommendationsInPage);
             var productRecommendations = catalogRepository.GetAllProducts(recommendations.Select(c => int.Parse(c)), recommendationsInPage);
             return productRecommendations.Select(i => new CatalogItemViewModel()
             {

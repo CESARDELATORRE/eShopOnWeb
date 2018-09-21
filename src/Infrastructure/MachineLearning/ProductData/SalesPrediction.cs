@@ -10,7 +10,7 @@ namespace ProductRecommendation.Train.ProductData
         public string ProductId { get; set; }
 
         [ColumnName("PredictedLabel")]
-        public DvBool Recommendation;
+        public bool Recommendation;
 
         [ColumnName("Score")]
         public float Score { get; set; }

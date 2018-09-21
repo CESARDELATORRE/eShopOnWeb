@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.ML" Version="0.6.0-preview-26921-1" />
-    <PackageReference Include="Microsoft.ML.CpuMath" Version="0.6.0-preview-26921-1" />
   </ItemGroup>
 
 </Project>

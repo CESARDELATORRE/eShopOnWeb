@@ -22,7 +22,7 @@ namespace ProductRecommendation
                 var modelBuilder = new ModelBuilder(salesCsv, modelZip);
                 modelBuilder.BuildAndTrain();
 
-                //modelBuilder.Test();
+                modelBuilder.Test();
             }
             catch (Exception ex)
             {

@@ -38,7 +38,7 @@ namespace ProductRecommendation
 
             var (trainData, pipe) = BuildModel(preProcessData);
 
-            ITransformer model = TrainModel(pipe, trainData);
+            TransformerChain<ITransformer> model = TrainModel(pipe, trainData);
 
             if (!string.IsNullOrEmpty(modelLocation))
             {
@@ -56,7 +56,7 @@ namespace ProductRecommendation
             var predictions = PredictDataUsingModel(productsLocation, loadedModel).ToArray();
         }
 
-        private void SaveModel(ITransformer model, string modelLocation)
+        private void SaveModel(TransformerChain<ITransformer> model, string modelLocation)
         {
             ConsoleWriteHeader("Save model to local file");
             ModelHelpers.DeleteAssets(modelLocation);
@@ -66,7 +66,7 @@ namespace ProductRecommendation
             Console.WriteLine($"Model saved: {modelLocation}");
         }
 
-        private static ITransformer TrainModel(IEstimator<ITransformer> pipe, IDataView data)
+        private static TransformerChain<ITransformer> TrainModel(EstimatorChain<ITransformer> pipe, IDataView data)
         {
             ConsoleWriteHeader("Training recommendation model");
             return pipe.Fit(data);
@@ -111,7 +111,7 @@ namespace ProductRecommendation
             return data;
         }
 
-        protected (IDataView, IEstimator<ITransformer>) BuildModel(IEnumerable<SalesRecommendationData> salesData)
+        protected (IDataView, EstimatorChain<ITransformer>) BuildModel(IEnumerable<SalesRecommendationData> salesData)
         {
             ConsoleWriteHeader("Build model pipeline");
 
@@ -129,26 +129,6 @@ namespace ProductRecommendation
                 new CategoricalEstimator.ColumnInfo(customerColumn, customerColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
             });
 
-            //var pipe = new HashEstimator(env, new[] {
-            //    new HashTransformer.ColumnInfo(productColumn, productColumnOneHotEnc),
-            //    new HashTransformer.ColumnInfo(customerColumn, customerColumnOneHotEnc)
-            //});
-
-            var trainData = pipe.Fit(dataview).Transform(dataview);
-
-            //var concat = new ConcatTransform(env, 
-            //    new ConcatTransform.ColumnInfo(featuresColumn, customerColumnOneHotEnc, productColumnOneHotEnc)
-            //    );
-
-            //var data = concat.Transform(pipeline.Fit(dataview).Transform(dataview));
-
-            var columnNames = trainData.Schema.GetColumnNames().ToArray();
-
-            var edata = trainData.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
-
-            //var trainRoles = new RoleMappedData(data, label: "Label", feature: featuresColumn);
-            //var trainer = new FieldAwareFactorizationMachineTrainer(env, new FieldAwareFactorizationMachineTrainer.Arguments());
-            //var model = trainer.Train(new Microsoft.ML.Runtime.TrainContext(trainRoles));
             IEstimator<ITransformer> est = new FieldAwareFactorizationMachineTrainer(env, labelColumn, new[] { customerColumnOneHotEnc, productColumnOneHotEnc },
                 advancedSettings: s =>
                 {
@@ -157,7 +137,31 @@ namespace ProductRecommendation
                     s.Caching = Microsoft.ML.Runtime.EntryPoints.CachingOptions.Memory;
                 });
 
-            return (trainData, est);
+            //var pipe = new HashEstimator(env, new[] {
+            //    new HashTransformer.ColumnInfo(productColumn, productColumnOneHotEnc),
+            //    new HashTransformer.ColumnInfo(customerColumn, customerColumnOneHotEnc)
+            //});
+
+            // inspect data
+            var trainData = pipe.Fit(dataview).Transform(dataview);
+            var columnNames = trainData.Schema.GetColumnNames().ToArray();
+            var trainDataAsEnumerable = trainData.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
+
+            return (dataview, pipe.Append(est));
+
+            //var trainData = pipe.Fit(dataview).Transform(dataview);
+
+            //var concat = new ConcatTransform(env, 
+            //    new ConcatTransform.ColumnInfo(featuresColumn, customerColumnOneHotEnc, productColumnOneHotEnc)
+            //    );
+
+            //var data = concat.Transform(pipeline.Fit(dataview).Transform(dataview));
+
+            //var trainRoles = new RoleMappedData(data, label: "Label", feature: featuresColumn);
+            //var trainer = new FieldAwareFactorizationMachineTrainer(env, new FieldAwareFactorizationMachineTrainer.Arguments());
+            //var model = trainer.Train(new Microsoft.ML.Runtime.TrainContext(trainRoles));
+
+            //return (trainData, est);
             //var trainTransformer = est.Fit(trainData);
 
             //model.Save(new Microsoft.ML.Runtime.Model.ModelSaveContext())
