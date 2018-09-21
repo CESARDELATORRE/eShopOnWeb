@@ -1,4 +1,6 @@
-﻿using Microsoft.ML.Runtime.Data;
+﻿using Microsoft.ML.Runtime;
+using Microsoft.ML.Runtime.Data;
+using Microsoft.ML.Runtime.Model;
 using ProductRecommendation;
 using System;
 using System.Collections.Generic;
@@ -42,6 +44,27 @@ namespace CustomerSegmentation.Model
             var maxLength = lines.Select(x => x.Length).Max();
             Console.WriteLine(new String('#', maxLength));
             Console.ForegroundColor = defaultColor;
+        }
+
+        public static void SaveTo(this ICanSaveModel model, IHostEnvironment env, Stream outputStream)
+        {
+            using (var ch = env.Start("Saving pipeline"))
+            {
+                using (var rep = RepositoryWriter.CreateNew(outputStream, ch))
+                {
+                    ch.Trace("Saving transformer chain");
+                    ModelSaveContext.SaveModel(rep, model, TransformerChain.LoaderSignature);
+                    rep.Commit();
+                }
+            }
+        }
+
+        public static IEnumerable<string> GetColumnNames (this ISchema schema) {
+            for (int i = 0; i < schema.ColumnCount; i++)
+            {
+                if (!schema.IsHidden(i))
+                    yield return schema.GetColumnName(i);
+            }
         }
     }
 }

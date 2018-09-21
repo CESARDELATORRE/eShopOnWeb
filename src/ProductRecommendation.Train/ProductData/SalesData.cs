@@ -40,4 +40,13 @@ namespace ProductRecommendation.Train.ProductData
         [ColumnName("Label")]
         public bool Recommendation { get; set; }
     }
+
+    public class SalesPipelineData : SalesRecommendationData
+    {
+        public float[] CustomerId_OHE { get; set; }
+
+        public float[] ProductId_OHE { get; set; }
+
+        //public float[] Features { get; set; }
+    }
 }

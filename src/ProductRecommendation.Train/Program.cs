@@ -7,7 +7,7 @@ namespace ProductRecommendation
 {
     public class Program
     {
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             // Running inside Visual Studio, $SolutionDir/assets is automatically passed as argument
             // If you execute from the console, pass as argument the location of the assets folder
@@ -20,8 +20,11 @@ namespace ProductRecommendation
             try
             {
                 var modelBuilder = new ModelBuilder(salesCsv, modelZip);
-                await modelBuilder.BuildAndTrain();                
-            } catch (Exception ex)
+                modelBuilder.BuildAndTrain();
+
+                //modelBuilder.Test();
+            }
+            catch (Exception ex)
             {
                 Console.Out.WriteLine(ex.Message);
             }

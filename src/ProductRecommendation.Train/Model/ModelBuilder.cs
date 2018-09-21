@@ -1,15 +1,21 @@
 ﻿using CustomerSegmentation.Model;
-using Microsoft.ML;
-using Microsoft.ML.Trainers;
+using Microsoft.ML.Legacy;
+using Microsoft.ML.Legacy.Trainers;
 using ProductRecommendation.Train.ProductData;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Linq;
-using Microsoft.ML.Transforms;
-using Microsoft.ML.Data;
-using Microsoft.ML.Models;
+using Microsoft.ML.Legacy.Transforms;
+using Microsoft.ML.Legacy.Data;
+using Microsoft.ML.Legacy.Models;
 using System;
 using static CustomerSegmentation.Model.ModelHelpers;
+using Microsoft.ML.Runtime.Data;
+using Microsoft.ML.Runtime.Api;
+using Microsoft.ML.Runtime.FactorizationMachine;
+using Microsoft.ML.Core.Data;
+using System.IO;
+using Microsoft.ML.Transforms;
 
 namespace ProductRecommendation
 {
@@ -17,43 +23,53 @@ namespace ProductRecommendation
     {
         private readonly string productsLocation;
         private readonly string modelLocation;
+        private readonly ConsoleEnvironment env;
 
         public ModelBuilder(string productsLocation, string modelLocation)
         {
             this.productsLocation = productsLocation;
             this.modelLocation = modelLocation;
+            env = new ConsoleEnvironment(42);
         }
 
-        public async Task BuildAndTrain()
+        public void BuildAndTrain()
         {
             var preProcessData = PreProcess(productsLocation);
 
-            var learningPipeline = BuildModel(preProcessData);
+            var (trainData, pipe) = BuildModel(preProcessData);
 
-            PredictionModel<SalesData, SalesPrediction> model = TrainModel(learningPipeline);
+            ITransformer model = TrainModel(pipe, trainData);
 
             if (!string.IsNullOrEmpty(modelLocation))
             {
-                await SaveModel(model);
+                SaveModel(model, modelLocation);
             }
 
             //var pred = model.Predict(new SalesData { CustomerId = "b0b3d87a-a904-46ac-8bd4-fd561a5c2dd3", ProductId = "1000" });
 
-            EvaluateModel(preProcessData, model);
+            //EvaluateModel(preProcessData, model);
         }
 
-        private async Task SaveModel(PredictionModel<SalesData, SalesPrediction> model)
+        public void Test()
+        {
+            var loadedModel = LoadModel(modelLocation);
+            var predictions = PredictDataUsingModel(productsLocation, loadedModel).ToArray();
+        }
+
+        private void SaveModel(ITransformer model, string modelLocation)
         {
             ConsoleWriteHeader("Save model to local file");
             ModelHelpers.DeleteAssets(modelLocation);
-            await model.WriteAsync(modelLocation);
+            //await model.WriteAsync(modelLocation);
+            using (var fs = File.Create(modelLocation))
+                model.SaveTo(env, fs);
             Console.WriteLine($"Model saved: {modelLocation}");
         }
 
-        private static PredictionModel<SalesData, SalesPrediction> TrainModel(LearningPipeline learningPipeline)
+        private static ITransformer TrainModel(IEstimator<ITransformer> pipe, IDataView data)
         {
             ConsoleWriteHeader("Training recommendation model");
-            return learningPipeline.Train<SalesData, SalesPrediction>();
+            return pipe.Fit(data);
         }
 
         protected IEnumerable<SalesRecommendationData> PreProcess(string salesLocation)
@@ -95,25 +111,100 @@ namespace ProductRecommendation
             return data;
         }
 
-        protected LearningPipeline BuildModel(IEnumerable<SalesRecommendationData> salesData)
+        protected (IDataView, IEstimator<ITransformer>) BuildModel(IEnumerable<SalesRecommendationData> salesData)
         {
             ConsoleWriteHeader("Build model pipeline");
 
-            var pipeline = new LearningPipeline();
+            const string customerColumn = nameof(SalesRecommendationData.CustomerId);
+            const string customerColumnOneHotEnc = customerColumn + "_OHE";
+            const string productColumn = nameof(SalesRecommendationData.ProductId);
+            const string productColumnOneHotEnc = productColumn + "_OHE";
+            //const string featuresColumn = "Features";
+            const string labelColumn = "Label";
 
-            pipeline.Add(CollectionDataSource.Create(salesData));
+            var dataview = ComponentCreation.CreateDataView(env, salesData.ToList());
 
-            // One Hot Encoding using Hash Vector. The new columns are named as the original ones, but adding the suffix "_OH"
-            pipeline.Add(new CategoricalHashOneHotVectorizer((nameof(SalesRecommendationData.ProductId), nameof(SalesRecommendationData.ProductId) + "_OH")) { HashBits = 18 });
-            pipeline.Add(new CategoricalHashOneHotVectorizer((nameof(SalesRecommendationData.CustomerId), nameof(SalesRecommendationData.CustomerId) + "_OH")) { HashBits = 18 });
+            var pipe = new CategoricalEstimator(env, new[] {
+                new CategoricalEstimator.ColumnInfo(productColumn, productColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
+                new CategoricalEstimator.ColumnInfo(customerColumn, customerColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
+            });
 
-            // Combine *_OH columns into Features
-            pipeline.Add(new ColumnConcatenator("Features", nameof(SalesRecommendationData.ProductId) + "_OH", nameof(SalesRecommendationData.CustomerId) + "_OH"));
+            //var pipe = new HashEstimator(env, new[] {
+            //    new HashTransformer.ColumnInfo(productColumn, productColumnOneHotEnc),
+            //    new HashTransformer.ColumnInfo(customerColumn, customerColumnOneHotEnc)
+            //});
 
-            // Adds a binary classifier learner, using the Field Factorization Machines based on libFFM 
-            pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier());
+            var trainData = pipe.Fit(dataview).Transform(dataview);
 
-            return pipeline;
+            //var concat = new ConcatTransform(env, 
+            //    new ConcatTransform.ColumnInfo(featuresColumn, customerColumnOneHotEnc, productColumnOneHotEnc)
+            //    );
+
+            //var data = concat.Transform(pipeline.Fit(dataview).Transform(dataview));
+
+            var columnNames = trainData.Schema.GetColumnNames().ToArray();
+
+            var edata = trainData.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
+
+            //var trainRoles = new RoleMappedData(data, label: "Label", feature: featuresColumn);
+            //var trainer = new FieldAwareFactorizationMachineTrainer(env, new FieldAwareFactorizationMachineTrainer.Arguments());
+            //var model = trainer.Train(new Microsoft.ML.Runtime.TrainContext(trainRoles));
+            IEstimator<ITransformer> est = new FieldAwareFactorizationMachineTrainer(env, labelColumn, new[] { customerColumnOneHotEnc, productColumnOneHotEnc },
+                advancedSettings: s =>
+                {
+                    s.Shuffle = true;
+                    s.Iters = 3;
+                    s.Caching = Microsoft.ML.Runtime.EntryPoints.CachingOptions.Memory;
+                });
+
+            return (trainData, est);
+            //var trainTransformer = est.Fit(trainData);
+
+            //model.Save(new Microsoft.ML.Runtime.Model.ModelSaveContext())
+
+
+            //IDataScorerTransform scorer = ScoreUtils.GetScorer(model, trainRoles, env, trainRoles.Schema);
+
+            // Create prediction engine and test predictions.
+            //var predictor = env.CreatePredictionEngine<SalesData, SalesPrediction>(scorer);
+
+
+            //pipe.
+
+            //var pipeline = new LearningPipeline();
+
+            //pipeline.Add(CollectionDataSource.Create(salesData));
+
+            //// One Hot Encoding using Hash Vector. The new columns are named as the original ones, but adding the suffix "_OH"
+            //pipeline.Add(new CategoricalHashOneHotVectorizer((nameof(SalesRecommendationData.ProductId), nameof(SalesRecommendationData.ProductId) + "_OH")) { HashBits = 18 });
+            //pipeline.Add(new CategoricalHashOneHotVectorizer((nameof(SalesRecommendationData.CustomerId), nameof(SalesRecommendationData.CustomerId) + "_OH")) { HashBits = 18 });
+
+            //// Combine *_OH columns into Features
+            //pipeline.Add(new ColumnConcatenator("Features", nameof(SalesRecommendationData.ProductId) + "_OH", nameof(SalesRecommendationData.CustomerId) + "_OH"));
+
+            //// Adds a binary classifier learner, using the Field Factorization Machines based on libFFM 
+            //pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier());
+
+            //return pipeline;
+        }
+
+        protected PredictionFunction<SalesData, SalesPrediction> LoadModel(string modelLocation)
+        {
+            using (var file = File.OpenRead(modelLocation))
+            {
+                return TransformerChain
+                    .LoadFrom(env, file)
+                    .MakePredictionFunction<SalesData, SalesPrediction>(env);
+            }
+        }
+
+        protected IEnumerable<SalesPrediction> PredictDataUsingModel(string testFileLocation, PredictionFunction<SalesData, SalesPrediction> model)
+        {
+            var testData = SalesData.ReadFromCsv(testFileLocation);
+            foreach (var item in testData)
+            {
+                yield return model.Predict(item);
+            }
         }
 
         protected void EvaluateModel(IEnumerable<SalesRecommendationData> salesData, PredictionModel<SalesData, SalesPrediction> model)
