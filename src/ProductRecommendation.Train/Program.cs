@@ -19,10 +19,8 @@ namespace ProductRecommendation
             {
                 var modelBuilder = new ModelBuilder(salesPreprocessedCsv, modelZip);
                 //modelBuilder.PreProcess(salesOriginalCsv);
-                modelBuilder.BuildAndTrainEstimatorAPI();
-                //modelBuilder.BuildAndTrainStaticApi();
-
-                //modelBuilder.Test();
+                //modelBuilder.BuildAndTrainEstimatorAPI();
+                modelBuilder.BuildAndTrainStaticApi();
             }
             catch (Exception ex)
             {

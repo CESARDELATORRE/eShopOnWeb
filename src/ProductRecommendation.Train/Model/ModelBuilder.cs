@@ -181,11 +181,10 @@ namespace ProductRecommendation
                     advancedSettings: ffmArguments => ffmArguments.Shuffle = false,
                     onFit: p => pred = p)));
 
-            var dataSource = new MultiFileSource(orderItemsLocation);
-
             var pipe = reader.Append(est);
 
             ConsoleWriteHeader("Training recommendation file");
+            var dataSource = new MultiFileSource(orderItemsLocation);
             var model = pipe.Fit(dataSource);
 
             var data = model.Read(dataSource);
