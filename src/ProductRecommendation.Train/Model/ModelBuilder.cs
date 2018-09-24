@@ -122,8 +122,6 @@ namespace ProductRecommendation
             const string featuresColumn = DefaultColumnNames.Features;
             const string labelColumn = DefaultColumnNames.Label;
 
-            //var dataview = ComponentCreation.CreateDataView(env, salesData.ToList());
-
             var reader = TextLoader.CreateReader(env,
                             c => (
                                 Label: c.LoadBool(0),
@@ -131,16 +129,6 @@ namespace ProductRecommendation
                                 ProductId: c.LoadText(2),
                                 Quantity: c.LoadFloat(3)),
                             separator: ',', hasHeader: true);
-
-            // REVIEW!!
-            // Using HashEstimator (instead of CategoricalEstimator), I've got some weird errors
-            //var pipe = new HashEstimator(env, 
-            //    new HashTransformer.ColumnInfo(productColumn, productColumnOneHotEnc, hashBits: 16),
-            //    new HashTransformer.ColumnInfo(customerColumn, customerColumnOneHotEnc, hashBits: 16)
-            //).Append(new KeyToVectorEstimator(env,
-            //    new KeyToVectorTransform.ColumnInfo(productColumnOneHotEnc, productColumnOneHotEnc),
-            //    new KeyToVectorTransform.ColumnInfo(customerColumnOneHotEnc, customerColumnOneHotEnc)
-            //)).Append(new ConcatEstimator(env, featuresColumn, productColumnOneHotEnc, customerColumnOneHotEnc)); 
 
             var pipe = new CategoricalEstimator(env, new[] {
                 new CategoricalEstimator.ColumnInfo(productColumn, productColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
@@ -182,16 +170,16 @@ namespace ProductRecommendation
 
             FieldAwareFactorizationMachinePredictor pred = null;
 
-            // With a custom loss function we no longer get calibrated predictions.
             var est = reader.MakeNewEstimator()
                 .Append(row => (CustomerId_OHE: row.CustomerId.OneHotEncoding(), ProductId_OHE: row.ProductId.OneHotEncoding(), row.Label))
                 .Append(row => (Features: row.CustomerId_OHE.ConcatWith(row.ProductId_OHE), row.Label))
                 .Append(row => (row.Label, preds: ctx.Trainers.FieldAwareFactorizationMachine(row.Label, new[] { row.Features }, onFit: p => pred = p)));
 
+            var dataSource = new MultiFileSource(orderItemsLocation);
+
             var pipe = reader.Append(est);
 
             ConsoleWriteHeader("Training recommendation file");
-            var dataSource = new MultiFileSource(orderItemsLocation);
             var model = pipe.Fit(dataSource);
 
             var data = model.Read(dataSource);
