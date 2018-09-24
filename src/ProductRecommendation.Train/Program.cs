@@ -14,13 +14,15 @@ namespace ProductRecommendation
             // Otherwise, it will search for assets in the executable's folder
             var assetsPath = args.Length > 0 ? args[0] : ModelHelpers.GetAssetsPath();
 
-            var salesCsv = Path.Combine(assetsPath, "inputs", "orderItems.csv");
+            var salesCsv = Path.Combine(assetsPath, "inputs", "orderItemsPre.csv");
             var modelZip = Path.Combine(assetsPath, "outputs", "productRecommendation.zip");
 
             try
             {
                 var modelBuilder = new ModelBuilder(salesCsv, modelZip);
-                modelBuilder.BuildAndTrain();
+                //modelBuilder.PreProcess(salesCsv);
+                modelBuilder.BuildAndTrainEstimatorAPI();
+                //modelBuilder.BuildAndTrainStaticApi();
 
                 //modelBuilder.Test();
             }

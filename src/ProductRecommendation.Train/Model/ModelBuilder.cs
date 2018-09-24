@@ -10,27 +10,29 @@ using Microsoft.ML.Runtime.FactorizationMachine;
 using Microsoft.ML.Core.Data;
 using System.IO;
 using Microsoft.ML.Runtime;
+using Microsoft.ML.Transforms;
+using Microsoft.ML.Data.StaticPipe;
+using Microsoft.ML.Runtime.Training;
+using Microsoft.ML.Trainers;
 
 namespace ProductRecommendation
 {
     public class ModelBuilder
     {
-        private readonly string productsLocation;
+        private readonly string orderItemsLocation;
         private readonly string modelLocation;
         private readonly ConsoleEnvironment env;
 
-        public ModelBuilder(string productsLocation, string modelLocation)
+        public ModelBuilder(string orderItemsLocation, string modelLocation)
         {
-            this.productsLocation = productsLocation;
+            this.orderItemsLocation = orderItemsLocation;
             this.modelLocation = modelLocation;
             env = new ConsoleEnvironment(42);
         }
 
-        public void BuildAndTrain()
+        public void BuildAndTrainEstimatorAPI()
         {
-            var preProcessData = PreProcess(productsLocation);
-
-            var (trainData, pipe) = BuildModel(preProcessData);
+            var (trainData, pipe) = BuildModel(orderItemsLocation);
 
             TransformerChain<ITransformer> model = TrainModel(pipe, trainData);
 
@@ -39,16 +41,15 @@ namespace ProductRecommendation
                 SaveModel(model, modelLocation);
             }
 
-            // These metrics are overstimated as we are using for evaluation the same training dataset 
             // REVIEW!!
             // metrics do not work (always zero)
-            EvaluateModel(model.Transform(trainData));
+            // EvaluateModel(model.Transform(trainData));
         }
 
         public void Test()
         {
             var loadedModel = LoadModel(modelLocation);
-            var predictions = PredictDataUsingModel(productsLocation, loadedModel).ToArray();
+            var predictions = PredictDataUsingModel(orderItemsLocation, loadedModel).ToArray();
         }
 
         private void SaveModel(TransformerChain<ITransformer> model, string modelLocation)
@@ -60,18 +61,18 @@ namespace ProductRecommendation
             Console.WriteLine($"Model saved: {modelLocation}");
         }
 
-        private static TransformerChain<ITransformer> TrainModel(EstimatorChain<ITransformer> pipe, IDataView data)
+        private static TransformerChain<ITransformer> TrainModel(EstimatorChain<ITransformer> pipe, IDataView dataView)
         {
             ConsoleWriteHeader("Training recommendation model");
-            return pipe.Fit(data);
+            return pipe.Fit(dataView);
         }
 
-        protected IEnumerable<SalesRecommendationData> PreProcess(string salesLocation)
+        public IEnumerable<SalesRecommendationData> PreProcess(string orderItemsLocation)
         {
             ConsoleWriteHeader("Preprocess input file");
-            Console.WriteLine($"Input file: {salesLocation}");
+            Console.WriteLine($"Input file: {orderItemsLocation}");
 
-            var sales = SalesData.ReadFromCsv(salesLocation);
+            var sales = SalesData.ReadFromCsv(env, orderItemsLocation).ToArray();
 
             // Calculate the mean Quantiy sold of each product
             // This value will be used as a threshold for discretizing the Quantity value
@@ -102,10 +103,15 @@ namespace ProductRecommendation
             var customers = sales.Select(c => c.CustomerId).Distinct().Count();
             Console.WriteLine($"Unique customers: {customers}");
 
+            var salesPrepLocation = Path.Combine(Path.GetDirectoryName(orderItemsLocation), "orderItemsPre.csv");
+            Console.WriteLine($"Output file: {salesPrepLocation}");
+
+            SalesRecommendationData.SaveToCsv(env, data, salesPrepLocation);
+
             return data;
         }
 
-        protected (IDataView, EstimatorChain<ITransformer>) BuildModel(IEnumerable<SalesRecommendationData> salesData)
+        protected (IDataView, EstimatorChain<ITransformer>) BuildModel(string orderItemsLocation)
         {
             ConsoleWriteHeader("Build model pipeline");
 
@@ -116,14 +122,25 @@ namespace ProductRecommendation
             const string featuresColumn = DefaultColumnNames.Features;
             const string labelColumn = DefaultColumnNames.Label;
 
-            var dataview = ComponentCreation.CreateDataView(env, salesData.ToList());
+            //var dataview = ComponentCreation.CreateDataView(env, salesData.ToList());
+
+            var reader = TextLoader.CreateReader(env,
+                            c => (
+                                Label: c.LoadBool(0),
+                                CustomerId: c.LoadText(1),
+                                ProductId: c.LoadText(2),
+                                Quantity: c.LoadFloat(3)),
+                            separator: ',', hasHeader: true);
 
             // REVIEW!!
             // Using HashEstimator (instead of CategoricalEstimator), I've got some weird errors
-            //var pipe = new HashEstimator(env, new[] {
-            //    new HashTransformer.ColumnInfo(productColumn, productColumnOneHotEnc),
-            //    new HashTransformer.ColumnInfo(customerColumn, customerColumnOneHotEnc)
-            //}).Append(new ConcatEstimator(env, featuresColumn, productColumnOneHotEnc, customerColumnOneHotEnc)); ;
+            //var pipe = new HashEstimator(env, 
+            //    new HashTransformer.ColumnInfo(productColumn, productColumnOneHotEnc, hashBits: 16),
+            //    new HashTransformer.ColumnInfo(customerColumn, customerColumnOneHotEnc, hashBits: 16)
+            //).Append(new KeyToVectorEstimator(env,
+            //    new KeyToVectorTransform.ColumnInfo(productColumnOneHotEnc, productColumnOneHotEnc),
+            //    new KeyToVectorTransform.ColumnInfo(customerColumnOneHotEnc, customerColumnOneHotEnc)
+            //)).Append(new ConcatEstimator(env, featuresColumn, productColumnOneHotEnc, customerColumnOneHotEnc)); 
 
             var pipe = new CategoricalEstimator(env, new[] {
                 new CategoricalEstimator.ColumnInfo(productColumn, productColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
@@ -138,6 +155,8 @@ namespace ProductRecommendation
                     s.Caching = Microsoft.ML.Runtime.EntryPoints.CachingOptions.Memory;
                 });
 
+            var dataview = reader.Read(new MultiFileSource(orderItemsLocation)).AsDynamic;
+
             // inspect data
             var trainData = pipe.Fit(dataview).Transform(dataview);
             var columnNames = trainData.Schema.GetColumnNames().ToArray();
@@ -145,6 +164,44 @@ namespace ProductRecommendation
 
             return (dataview, pipe.Append(est));
         }
+
+        public void BuildAndTrainStaticApi()
+        {
+            ConsoleWriteHeader("Build and Train using Static API");
+            Console.Out.WriteLine($"Input file: {orderItemsLocation}");
+
+            var ctx = new BinaryClassificationContext(env);
+
+            ConsoleWriteHeader("Reading file ...");
+            var reader = TextLoader.CreateReader(env,
+                            c => (
+                                Label: c.LoadBool(0),
+                                CustomerId: c.LoadText(1),
+                                ProductId: c.LoadText(2)),
+                            separator: ',', hasHeader: true);
+
+            FieldAwareFactorizationMachinePredictor pred = null;
+
+            // With a custom loss function we no longer get calibrated predictions.
+            var est = reader.MakeNewEstimator()
+                .Append(row => (CustomerId_OHE: row.CustomerId.OneHotEncoding(), ProductId_OHE: row.ProductId.OneHotEncoding(), row.Label))
+                .Append(row => (Features: row.CustomerId_OHE.ConcatWith(row.ProductId_OHE), row.Label))
+                .Append(row => (row.Label, preds: ctx.Trainers.FieldAwareFactorizationMachine(row.Label, new[] { row.Features }, onFit: p => pred = p)));
+
+            var pipe = reader.Append(est);
+
+            ConsoleWriteHeader("Training recommendation file");
+            var dataSource = new MultiFileSource(orderItemsLocation);
+            var model = pipe.Fit(dataSource);
+
+            var data = model.Read(dataSource);
+
+            ConsoleWriteHeader("Evaluate model");
+            var metrics = ctx.Evaluate(data, r => r.Label, r => r.preds);
+            Console.WriteLine($"Accuracy is: {metrics.Accuracy}");
+            Console.WriteLine($"AUC is: {metrics.Auc}");
+        }
+
 
         protected PredictionFunction<SalesData, SalesPrediction> LoadModel(string modelLocation)
         {

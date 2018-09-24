@@ -2,6 +2,7 @@
 using Microsoft.ML.Runtime;
 using Microsoft.ML.Runtime.Api;
 using Microsoft.ML.Runtime.Data;
+using Microsoft.ML.Runtime.Data.IO;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -22,7 +23,7 @@ namespace ProductRecommendation.Train.ProductData
         public string ProductId { get; set; }
 
         [Column("3")]
-        public int Quantity { get; set; }
+        public float Quantity { get; set; }
 
         public static IEnumerable<SalesData> ReadFromCsv(string file)
         {
@@ -40,14 +41,18 @@ namespace ProductRecommendation.Train.ProductData
 
         public static IEnumerable<SalesData> ReadFromCsv(IHostEnvironment env, string file)
         {
-            var reader = TextLoader.CreateReader<SalesData>(env, ctx => new SalesData
+            var dataView = TextLoader.ReadFile(env, new TextLoader.Arguments()
             {
-                CustomerId = ctx.LoadText(1).ToString(),
-                ProductId = ctx.LoadText(2).ToString(),
-                Quantity = int.Parse(ctx.LoadDouble(3).ToString())
-            });
-
-            return reader.Read(new MultiFileSource(file)).AsDynamic.AsEnumerable<SalesData>(env, false);
+                Separator = "comma",
+                HasHeader = true,
+                Column = new[]
+                {
+                    new TextLoader.Column("CustomerId", DataKind.Text, 0),
+                    new TextLoader.Column("ProductId", DataKind.Text, 1),
+                    new TextLoader.Column("Quantity", DataKind.I4, 2)
+                }
+            }, new MultiFileSource(file));
+            return dataView.AsEnumerable<SalesData>(env, reuseRowObject: false);
         }
     }
 
@@ -55,6 +60,22 @@ namespace ProductRecommendation.Train.ProductData
     {
         [ColumnName("Label")]
         public bool Recommendation { get; set; }
+
+        public static void SaveToCsv(IHostEnvironment env, IEnumerable<SalesRecommendationData> salesData, string file)
+        {
+            var dataview = ComponentCreation.CreateDataView(env, salesData.ToList());
+            using (var stream = File.OpenWrite(file))
+            {
+                var saver = new TextSaver(env, new TextSaver.Arguments()
+                {
+                    Dense = true,
+                    Separator = "comma",
+                    OutputHeader = true,
+                    OutputSchema = true
+                });
+                saver.SaveData(stream, dataview, new[] { 0, 1, 2, 3 });
+            }
+        }
     }
 
     public class SalesPipelineData : SalesRecommendationData
