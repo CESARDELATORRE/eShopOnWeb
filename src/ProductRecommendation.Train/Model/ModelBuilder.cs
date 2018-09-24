@@ -27,7 +27,7 @@ namespace ProductRecommendation
         {
             this.orderItemsLocation = orderItemsLocation;
             this.modelLocation = modelLocation;
-            env = new LocalEnvironment(42);
+            env = new LocalEnvironment(seed:1);  //Seed set to any number so you have a deterministic environment
         }
 
         public void BuildAndTrainEstimatorAPI()
