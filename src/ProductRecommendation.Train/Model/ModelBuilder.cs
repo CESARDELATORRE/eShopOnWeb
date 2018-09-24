@@ -187,11 +187,16 @@ namespace ProductRecommendation
 
             var pipe = reader.Append(est);
 
-            ConsoleWriteHeader("Training recommendation file");
+            ConsoleWriteHeader("Training model for recommendations");
             var dataSource = new MultiFileSource(orderItemsLocation);
             var model = pipe.Fit(dataSource);
 
             var data = model.Read(dataSource);
+
+            // inspect data
+            var trainData = data.AsDynamic;
+            var columnNames = trainData.Schema.GetColumnNames().ToArray();
+            var trainDataAsEnumerable = trainData.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
 
             ConsoleWriteHeader("Evaluate model");
             var metrics = ctx.Evaluate(data, r => r.Label, r => r.preds);
