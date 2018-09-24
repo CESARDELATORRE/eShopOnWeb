@@ -74,9 +74,13 @@ namespace ProductRecommendation
 
             var sales = SalesData.ReadFromCsv(env, orderItemsLocation).ToArray();
 
+            var agg = (from s in sales
+                       group s by (s.CustomerId, s.ProductId) into gpr
+                       select new { gpr.Key.CustomerId, gpr.Key.ProductId, Quantity = gpr.Sum(s => s.Quantity) });
+
             // Calculate the mean Quantiy sold of each product
             // This value will be used as a threshold for discretizing the Quantity value
-            var means = (from s in sales
+            var means = (from s in agg
                          group s by s.ProductId into gpr
                          let lookup = gpr.ToLookup(y => y.ProductId, y => y.Quantity)
                          select new {
@@ -85,7 +89,7 @@ namespace ProductRecommendation
                          }).ToDictionary(d => d.ProductId, d => d.Mean);
 
             // Add a new Recommendation column based on the Quantity column
-            var data = (from sale in sales
+            var data = (from sale in agg
                     select new SalesRecommendationData
                     {
                         CustomerId = sale.CustomerId,
