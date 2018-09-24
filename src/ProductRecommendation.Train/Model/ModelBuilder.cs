@@ -43,7 +43,7 @@ namespace ProductRecommendation
 
             // REVIEW!!
             // metrics do not work (always zero)
-            // EvaluateModel(model.Transform(trainData));
+            //EvaluateModel(model.Transform(trainData));
         }
 
         public void Test()
@@ -106,7 +106,7 @@ namespace ProductRecommendation
             var salesPrepLocation = Path.Combine(Path.GetDirectoryName(orderItemsLocation), "orderItemsPre.csv");
             Console.WriteLine($"Output file: {salesPrepLocation}");
 
-            SalesRecommendationData.SaveToCsv(env, data, salesPrepLocation);
+            SalesRecommendationData.SaveToCsv(data, salesPrepLocation);
 
             return data;
         }
@@ -124,10 +124,10 @@ namespace ProductRecommendation
 
             var reader = TextLoader.CreateReader(env,
                             c => (
-                                Label: c.LoadBool(0),
-                                CustomerId: c.LoadText(1),
-                                ProductId: c.LoadText(2),
-                                Quantity: c.LoadFloat(3)),
+                                CustomerId: c.LoadText(0),
+                                ProductId: c.LoadText(1),
+                                Quantity: c.LoadFloat(2),
+                                Label: c.LoadBool(3)),
                             separator: ',', hasHeader: true);
 
             var pipe = new CategoricalEstimator(env, new[] {
@@ -138,7 +138,7 @@ namespace ProductRecommendation
             IEstimator<ITransformer> est = new FieldAwareFactorizationMachineTrainer(env, labelColumn, new[] { featuresColumn },
                 advancedSettings: s =>
                 {
-                    s.Shuffle = true;
+                    s.Shuffle = false;
                     s.Iters = 3;
                     s.Caching = Microsoft.ML.Runtime.EntryPoints.CachingOptions.Memory;
                 });
@@ -163,9 +163,10 @@ namespace ProductRecommendation
             ConsoleWriteHeader("Reading file ...");
             var reader = TextLoader.CreateReader(env,
                             c => (
-                                Label: c.LoadBool(0),
-                                CustomerId: c.LoadText(1),
-                                ProductId: c.LoadText(2)),
+                                CustomerId: c.LoadText(0),
+                                ProductId: c.LoadText(1),
+                                Quantity: c.LoadFloat(2),
+                                Label: c.LoadBool(3)),
                             separator: ',', hasHeader: true);
 
             FieldAwareFactorizationMachinePredictor pred = null;
@@ -173,7 +174,12 @@ namespace ProductRecommendation
             var est = reader.MakeNewEstimator()
                 .Append(row => (CustomerId_OHE: row.CustomerId.OneHotEncoding(), ProductId_OHE: row.ProductId.OneHotEncoding(), row.Label))
                 .Append(row => (Features: row.CustomerId_OHE.ConcatWith(row.ProductId_OHE), row.Label))
-                .Append(row => (row.Label, preds: ctx.Trainers.FieldAwareFactorizationMachine(row.Label, new[] { row.Features }, onFit: p => pred = p)));
+                .Append(row => (row.Label, 
+                preds: ctx.Trainers.FieldAwareFactorizationMachine(
+                    row.Label, 
+                    new[] { row.Features }, 
+                    advancedSettings: ffmArguments => ffmArguments.Shuffle = false,
+                    onFit: p => pred = p)));
 
             var dataSource = new MultiFileSource(orderItemsLocation);
 

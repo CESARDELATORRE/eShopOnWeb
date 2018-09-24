@@ -1,4 +1,5 @@
-﻿using Microsoft.ML.Data;
+﻿using CustomerSegmentation.Model;
+using Microsoft.ML.Data;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.Runtime.Api;
 using Microsoft.ML.Runtime.Data;
@@ -16,13 +17,10 @@ namespace ProductRecommendation.Train.ProductData
         // CustomerId,ProductId,Units
         // 1d211951-7593-4828-9e46-1e1c56afa74a,100,12
         
-        [Column("1")]
         public string CustomerId { get; set; }
 
-        [Column("2")]
         public string ProductId { get; set; }
 
-        [Column("3")]
         public float Quantity { get; set; }
 
         public static IEnumerable<SalesData> ReadFromCsv(string file)
@@ -49,7 +47,7 @@ namespace ProductRecommendation.Train.ProductData
                 {
                     new TextLoader.Column("CustomerId", DataKind.Text, 0),
                     new TextLoader.Column("ProductId", DataKind.Text, 1),
-                    new TextLoader.Column("Quantity", DataKind.I4, 2)
+                    new TextLoader.Column("Quantity", DataKind.R4, 2)
                 }
             }, new MultiFileSource(file));
             return dataView.AsEnumerable<SalesData>(env, reuseRowObject: false);
@@ -61,19 +59,27 @@ namespace ProductRecommendation.Train.ProductData
         [ColumnName("Label")]
         public bool Recommendation { get; set; }
 
+        public static void SaveToCsv(IEnumerable<SalesRecommendationData> salesData, string file)
+        {
+            File.WriteAllLines(file, salesData
+                .Select(s => $"{s.CustomerId},{s.ProductId},{s.Quantity},{Convert.ToInt16(s.Recommendation)}")
+                .Prepend($"{nameof(SalesRecommendationData.CustomerId)},{nameof(SalesRecommendationData.ProductId)},{nameof(SalesRecommendationData.Quantity)},{nameof(SalesRecommendationData.Recommendation)}"));
+        }
+
         public static void SaveToCsv(IHostEnvironment env, IEnumerable<SalesRecommendationData> salesData, string file)
         {
             var dataview = ComponentCreation.CreateDataView(env, salesData.ToList());
+            var columns = dataview.Schema.GetColumnNames().ToArray();
             using (var stream = File.OpenWrite(file))
             {
                 var saver = new TextSaver(env, new TextSaver.Arguments()
                 {
-                    Dense = true,
+                    Dense = false,
                     Separator = "comma",
                     OutputHeader = true,
-                    OutputSchema = true
+                    OutputSchema = true           
                 });
-                saver.SaveData(stream, dataview, new[] { 0, 1, 2, 3 });
+                saver.SaveData(stream, dataview, new[] { 0 , 1 , 2 , 3 });
             }
         }
     }

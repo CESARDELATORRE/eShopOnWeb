@@ -13,7 +13,6 @@ namespace CustomerSegmentation.Model
     public static class ModelHelpers
     {
         static FileInfo _dataRoot = new FileInfo(typeof(Program).Assembly.Location);
-        //static private readonly string _dataRoot = Path.Combine(currentAssemblyLocation.Directory.FullName, "assets");
 
         public static string GetAssetsPath(params string[] paths)
         {
