@@ -21,13 +21,13 @@ namespace ProductRecommendation
     {
         private readonly string orderItemsLocation;
         private readonly string modelLocation;
-        private readonly ConsoleEnvironment env;
+        private readonly LocalEnvironment env;
 
         public ModelBuilder(string orderItemsLocation, string modelLocation)
         {
             this.orderItemsLocation = orderItemsLocation;
             this.modelLocation = modelLocation;
-            env = new ConsoleEnvironment(42);
+            env = new LocalEnvironment(seed:1);  //Seed set to any number so you have a deterministic environment
         }
 
         public void BuildAndTrainEstimatorAPI()

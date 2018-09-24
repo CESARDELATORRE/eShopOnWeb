@@ -15,6 +15,9 @@ namespace Microsoft.eShopWeb.Infrastructure.Identity
 
             var cesar = new ApplicationUser { UserName = "cesardl@microsoft.com", Email = "cesardl@microsoft.com", Id = "71013715-676a-4a6b-91d3-7faf136e27a6" };
             await userManager.CreateAsync(cesar, "Pass@word1");
+
+            var gal = new ApplicationUser { UserName = "gaoshri@microsoft.com", Email = "gaoshri@microsoft.com", Id = "295051dc-d109-4008-92e5-548b44b7175f" };
+            await userManager.CreateAsync(gal, "Pass@word1");
         }
     }
 }
