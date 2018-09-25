@@ -29,21 +29,38 @@
     {
         <partial name="_pagination" for="CatalogModel.PaginationInfo" />
 
+        @if (Model.CatalogModel.BoughtCatalogItems.Any())
+        {
+            <div class="esh-catalog-items row" style="background-color: white">
+                <div class="esh-catalog-items row" style="text-align: center;">
+                    <span style="font-weight: bold">THESE ARE A FEW PRODUCTS THAT YOU BOUGHT IN THE PAST</span>
+                    <br /><br />
+                </div>
+
+                @foreach (var catalogItem in Model.CatalogModel.BoughtCatalogItems)
+                {
+                    <div class="esh-catalog-item col-md-4">
+                        <partial name="_product" for="@catalogItem" />
+                    </div>
+                }
+            </div>
+        }
+
         @if (Model.CatalogModel.RecommendedCatalogItems.Any())
         {
-        <div class="esh-catalog-items row" style="background-color: lightyellow">
-            <div class="esh-catalog-items row" style="text-align: center;">
-                <span style="font-weight: bold">RECOMMENDED PRODUCTS FOR YOU</span> based in your shopping history
-                <br /><br />
-            </div>
-
-            @foreach (var catalogItem in Model.CatalogModel.RecommendedCatalogItems)
-            {
-                <div class="esh-catalog-item col-md-4">
-                    <partial name="_product" for="@catalogItem" />
+            <div class="esh-catalog-items row" style="background-color: lightyellow">
+                <div class="esh-catalog-items row" style="text-align: center;">
+                    <span style="font-weight: bold">RECOMMENDED PRODUCTS FOR YOU</span> (based on your shopping history and other users with related purchases)
+                    <br /><br />
                 </div>
-            }
-        </div>
+
+                @foreach (var catalogItem in Model.CatalogModel.RecommendedCatalogItems)
+                {
+                    <div class="esh-catalog-item col-md-4">
+                        <partial name="_product" for="@catalogItem" />
+                    </div>
+                }
+            </div>
         }
 
         <div class="esh-catalog-items row">

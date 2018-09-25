@@ -17,6 +17,19 @@ namespace ProductRecommendation.Train.ProductData
         public string ProductId { get; set; }
 
         public int Quantity { get; set; }
+
+        public static IEnumerable<SalesData> ReadFromCsv(string file)
+        {
+            return File.ReadAllLines(file)
+                .Skip(8) // skip header
+                .Select(x => x.Split(','))
+                .Select(x => new SalesData()
+                {
+                    CustomerId = x[0],
+                    ProductId = x[1],
+                    Quantity = int.Parse(x[2])
+                });
+        }
     }
 
     public class SalesRecommendationData : SalesData

@@ -7,6 +7,7 @@ namespace Microsoft.eShopWeb.RazorPages.ViewModels
     {
         public IEnumerable<CatalogItemViewModel> CatalogItems { get; set; }
         public IEnumerable<CatalogItemViewModel> RecommendedCatalogItems { get; set; }
+        public IEnumerable<CatalogItemViewModel> BoughtCatalogItems { get; set; }
         public IEnumerable<SelectListItem> Brands { get; set; }
         public IEnumerable<SelectListItem> Types { get; set; }
         public int? BrandFilterApplied { get; set; }

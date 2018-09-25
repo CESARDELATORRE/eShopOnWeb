@@ -27,6 +27,7 @@ namespace Microsoft.eShopWeb.RazorPages.Services
         private readonly IUriComposer _uriComposer;
         private readonly ICatalogRepository catalogRepository;
         private readonly IProductRecommendationService productRecommendationService;
+        private readonly IDataSetReaderService dataSetReaderService;
 
         public CatalogService(
             ILoggerFactory loggerFactory,
@@ -35,7 +36,8 @@ namespace Microsoft.eShopWeb.RazorPages.Services
             IAsyncRepository<CatalogType> typeRepository,
             IUriComposer uriComposer,
             ICatalogRepository catalogRepository,
-            IProductRecommendationService productRecommendationService)
+            IProductRecommendationService productRecommendationService,
+            IDataSetReaderService dataSetReaderService)
         {
             _logger = loggerFactory.CreateLogger<CatalogService>();
             _itemRepository = itemRepository;
@@ -44,6 +46,7 @@ namespace Microsoft.eShopWeb.RazorPages.Services
             _uriComposer = uriComposer;
             this.catalogRepository = catalogRepository;
             this.productRecommendationService = productRecommendationService;
+            this.dataSetReaderService = dataSetReaderService;
         }
 
         public async Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId, string username, int recommendations)
@@ -88,9 +91,18 @@ namespace Microsoft.eShopWeb.RazorPages.Services
             };
 
             if (pageIndex == 0 && !String.IsNullOrEmpty(username))
+            {
+                //Get Recommended products for the authenticated user
                 vm.RecommendedCatalogItems = (GetRecommendations(username, recommendations)).ToArray();
+
+                //Get a few bought products in the past by the authenticated user
+                vm.BoughtCatalogItems = (this.GetSelectedBoughtItemsByUser(username, 3)).ToArray();
+            }
             else
+            {
                 vm.RecommendedCatalogItems = Enumerable.Empty<CatalogItemViewModel>();
+                vm.BoughtCatalogItems = Enumerable.Empty<CatalogItemViewModel>();
+            }
 
             vm.PaginationInfo.Next = (vm.PaginationInfo.ActualPage == vm.PaginationInfo.TotalPages - 1) ? "is-disabled" : "";
             vm.PaginationInfo.Previous = (vm.PaginationInfo.ActualPage == 0) ? "is-disabled" : "";
@@ -110,6 +122,35 @@ namespace Microsoft.eShopWeb.RazorPages.Services
                 PictureUri = _uriComposer.ComposePicUri(i.PictureUri),
                 Price = i.Price
             });
+        }
+
+        private IEnumerable<CatalogItemViewModel> GetSelectedBoughtItemsByUser(string user, int numberOfBoughtProductsInPage)
+        {
+            var productIds = catalogRepository.GetAllProductIds().ToArray();
+            var boughtProductsIDsList = dataSetReaderService.GetProductsBoughtByUser(user, productIds, numberOfBoughtProductsInPage);
+
+            var productsBoughtToShow = catalogRepository.GetAllProducts(boughtProductsIDsList.Select(c => int.Parse(c)), numberOfBoughtProductsInPage);
+            return productsBoughtToShow.Select(i => new CatalogItemViewModel()
+            {
+                Id = i.Id,
+                Name = i.Name,
+                PictureUri = _uriComposer.ComposePicUri(i.PictureUri),
+                Price = i.Price
+            });
+
+
+
+
+            //To swap.. --------------------------------------
+            //var recommendations = productRecommendationService.GetRecommendationsForUser(user, productIds, numberOfBoughtProductsInPage);
+            //var productRecommendations = catalogRepository.GetAllProducts(recommendations.Select(c => int.Parse(c)), numberOfBoughtProductsInPage);
+            //return productRecommendations.Select(i => new CatalogItemViewModel()
+            //{
+            //    Id = i.Id,
+            //    Name = i.Name,
+            //    PictureUri = _uriComposer.ComposePicUri(i.PictureUri),
+            //    Price = i.Price
+            //});
         }
 
         public async Task<IEnumerable<SelectListItem>> GetBrands()
