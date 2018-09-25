@@ -10,8 +10,6 @@ using Microsoft.ML.Runtime.FactorizationMachine;
 using Microsoft.ML.Core.Data;
 using System.IO;
 using Microsoft.ML.Runtime;
-using Microsoft.ML.Transforms;
-using Microsoft.ML.Data.StaticPipe;
 using Microsoft.ML.Runtime.Training;
 using Microsoft.ML.Trainers;
 
@@ -110,7 +108,7 @@ namespace ProductRecommendation
             var salesPrepLocation = Path.Combine(Path.GetDirectoryName(orderItemsLocation), "orderItemsPre.csv");
             Console.WriteLine($"Output file: {salesPrepLocation}");
 
-            SalesRecommendationData.SaveToCsv(data, salesPrepLocation);
+            SalesRecommendationData.SaveToCsv(env, data, salesPrepLocation);
 
             return data;
         }

@@ -56,7 +56,7 @@ namespace ProductRecommendation.Train.ProductData
 
     public class SalesRecommendationData : SalesData
     {
-        [ColumnName("Label")]
+        [ColumnName(DefaultColumnNames.Label)]
         public bool Recommendation { get; set; }
 
         public static void SaveToCsv(IEnumerable<SalesRecommendationData> salesData, string file)
@@ -70,6 +70,7 @@ namespace ProductRecommendation.Train.ProductData
         {
             var dataview = ComponentCreation.CreateDataView(env, salesData.ToList());
             var columns = dataview.Schema.GetColumnNames().ToArray();
+            var dataViewExpColumns = new ChooseColumnsTransform(env, dataview, nameof(CustomerId), nameof(ProductId), nameof(Quantity), DefaultColumnNames.Label);
             using (var stream = File.OpenWrite(file))
             {
                 var saver = new TextSaver(env, new TextSaver.Arguments()
@@ -79,7 +80,7 @@ namespace ProductRecommendation.Train.ProductData
                     OutputHeader = true,
                     OutputSchema = true           
                 });
-                saver.SaveData(stream, dataview, new[] { 0 , 1 , 2 , 3 });
+                saver.SaveData(stream, dataViewExpColumns, new[] { 0 , 1 , 2 , 3 });
             }
         }
     }

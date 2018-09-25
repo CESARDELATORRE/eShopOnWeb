@@ -5,58 +5,77 @@ eShopOnWebML app comes with a previously trained model for product recommendatio
 The console application project `ProductRecommendation.Train` can be used to generate the product recommendation model. You need to follow next steps in order to generate these models:
 
 1) **Set VS default startup project:** Set `ProductRecommendation.Train` as starting project in Visual Studio
-2) **(Optional) - Generate your own input training data:** The `assets/inputs` folder contains default training file  `orderItems.csv`. This file contains the data arranged in 3 columns: CustomerId, ProductId and Quantity. If you want to use your own training file, you should follow the same schema and replace current default training file.
-3) **Run the training model console app:** Hit F5 in Visual Studio. At the end of the execution, the output will be similar to this screenshot:
+2) **Run the training model console app:** Hit F5 in Visual Studio. At the end of the execution, the output will be similar to this screenshot:
 ![image](/docs/images/train_console.png)
-4) **Copy the model file into the Infrastructure project:** By default, when the execution finishes, the model is saved at `assets/output/productRecommendation.zip`. Copy model file into  `src / Infrastructure / Setup / `[model](https://github.com/CESARDELATORRE/eShopOnWeb/tree/master/src/Infrastructure/Setup/model) using the same name.
+3) **Copy the model file into the Infrastructure project:** By default, when the training finishes, the model is saved at `src / ProductRecommendation.Train / assets / output / productRecommendation.zip`. Copy this file into  `src / Infrastructure / Setup / `[model](https://github.com/CESARDELATORRE/eShopOnWeb/tree/master/src/Infrastructure/Setup/model) .
+4) **[Optional] Generate your own input training data:** The folder `assets/inputs` inside the project `ProductRecommendation.Train` contains default training file  `orderItems.csv`. This file needs to be preprocess first, in order to be consumed later by the training application. In order to execute the preprocessing, comment out following line at `Program.cs` :
+```csharp
+modelBuilder.PreProcess(salesOriginalCsv);
+``` 
+After executing the preprocessing step, a file name `orderItemsPre.csv` will be generated. This file contains the data arranged in 4 columns: CustomerId, ProductId, Quantity and Recommendation. 
+
+|CustomerId|ProductId|Quantity|Label|
+|----------|---------|--------|-----|
+|1d211951-7593-4828-9e46-1e1c56afa74a|100|12|0|
+|64ea8383-b9b1-43fb-b5df-93498df69b40|100|48|1|
+|209ace0e-b07b-4f6b-9b8d-65f46b3213ef|100|12|0|
+|78a64378-f69f-4934-b0af-94ad3c878276|100|12|0|
 
 ## Code Walkthrough
 
 ### ML.NET: Model creation
 The model training source code is located at `src / ProductRecommentation.Train / Model / `[ModelBuilder.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/ProductRecommendation.Train/Model/ModelBuilder.cs).
 
-Before creating the model, in this case we need to pre-process the input data. The reason behind this is because we will use a method that is able to make only binary recommendations, and our Label feature (quantity) is a continuos variable. The pre-process will transform this continuous variable into a categorical variable with 2 states: recommend / not recommend (true / false).
-
-There are several methods for discretizing a continuous variable, in this case we will set a threshold, and then we will transform values over or equal the threshold to true (do recommend), otherwise, to false (do not recommend). Finally, the mean by product is used as a threshold. 
-
-Previous transformation is supported by the method `PreProcess()`. As result, we will add one column named `Recommend` holding Quantity as a discretized value (true / false).
-
+The beginning of the machine learning pipeline starts defining the data source. In this case, it will be based on text (which will be stored in files), and `TextLoader.CreateReader()` is used to define a generic loader.
 ```csharp
-var pipeline = new LearningPipeline();
-
-pipeline.Add(CollectionDataSource.Create(salesData));
-
-pipeline.Add(new CategoricalHashOneHotVectorizer(
-  (nameof(SalesRecommendationData.ProductId), 
-  nameof(SalesRecommendationData.ProductId) + "_OH")) { HashBits = 18 });
-pipeline.Add(new CategoricalHashOneHotVectorizer(
-  (nameof(SalesRecommendationData.CustomerId), 
-  nameof(SalesRecommendationData.CustomerId) + "_OH")) { HashBits = 18 });
-
-pipeline.Add(new ColumnConcatenator("Features", 
-nameof(SalesRecommendationData.ProductId) + "_OH",
-nameof(SalesRecommendationData.CustomerId) + "_OH"));
-
-pipeline.Add(new FieldAwareFactorizationMachineBinaryClassifier() { LearningRate = 0.05F, Iters = 1, LambdaLinear = 0.0002F });
+var reader = TextLoader.CreateReader(env,
+                c => (
+                    CustomerId: c.LoadText(0),
+                    ProductId: c.LoadText(1),
+                    Quantity: c.LoadFloat(2),
+                    Label: c.LoadBool(3)),
+                separator: ',', hasHeader: true);
+```
+The schema defined in the loader follows the schema the the text must follow: lines, in which each field is separated by commas and with a default header in the first line, such as in this example:
+```csv
+CustomerId,ProductId,Quantity,Label
+1d211951-7593-4828-9e46-1e1c56afa74a,100,12,0
+64ea8383-b9b1-43fb-b5df-93498df69b40,100,48,1
+209ace0e-b07b-4f6b-9b8d-65f46b3213ef,100,12,0
+78a64378-f69f-4934-b0af-94ad3c878276,100,12,0
 ```
 
-The training pipeline is supported by the following components:
-* [CollectionDataSource.Create](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.data.collectiondatasource.create?view=ml-dotnet#Microsoft_ML_Data_CollectionDataSource_Create__1_System_Collections_Generic_IEnumerable___0__): The preprocessed data can be directly use as input for the pipeline.
-* [CategoricalHashOneHotVectorizer](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.categoricalhashonehotvectorizer?view=ml-dotnet): CustomerId and ProductId are transformed using a [One Hot Encoding](https://en.wikipedia.org/wiki/One-hot) variant based on hashing.
-* [ColumnConcatenator](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.transforms.columnconcatenator?view=ml-dotnet): Data needs to be combined into a single column (by default, named `Features`) as a prior step before the learner starts executing.
-* [FieldAwareFactorizationMachineBinaryClassifier](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.trainers.fieldawarefactorizationmachinebinaryclassifier?view=ml-dotnet): The learner used by the pipeline, this algorithm evaluates the interaction between CustomerId and ProductId, and can be used with [sparse data](https://en.wikipedia.org/wiki/Sparse_matrix).
-
-After building the pipeline, we train the recommendation model:
+Then, we define the estimator chain, implemented as:
 ```csharp
-var model = learningPipeline.Train<SalesData, SalesPrediction>();
+var est = reader.MakeNewEstimator()
+    .Append(row => (CustomerId_OHE: row.CustomerId.OneHotEncoding(), ProductId_OHE: row.ProductId.OneHotEncoding(), row.Label))
+    .Append(row => (Features: row.CustomerId_OHE.ConcatWith(row.ProductId_OHE), row.Label))
+    .Append(row => (row.Label, 
+    preds: ctx.Trainers.FieldAwareFactorizationMachine(
+        row.Label, 
+        new[] { row.Features }, 
+        advancedSettings: ffmArguments => ffmArguments.Shuffle = false,
+        onFit: p => pred = p)));
+
+var pipe = reader.Append(est);
 ```
 
-Finally, we save the recommendation model to local disk:
+The estimation pipe is supported by what is called the **Static API**. Using this API, transformers and learners are applied  naturally as extensions method to current types, making more easy to discover the API using strong types:
+* `.MakeEstimator()`: Create an estimator pipe.
+* `.OneHotEncoding()`: CustomerId and ProductId are transformed using [One Hot Encoding](https://en.wikipedia.org/wiki/One-hot).
+* `.ConcatWith()`: Data needs to be combined into a single column (named `Features`) as a prior step before the learner starts executing.
+* `.FieldAwareFactorizationMachine()`: The learner used by the pipeline is called [Field-aware Factorization Machine](https://github.com/wschin/fast-ffm/blob/master/fast-ffm.pdf), this algorithm evaluates the interaction between several features (in our case, CustomerId and ProductId), and it can be used with [sparse data](https://en.wikipedia.org/wiki/Sparse_matrix).
+
+After building the pipeline, we train the recommendation model using the training file:
 ```csharp
-await model.WriteAsync(modelLocation);
+var dataSource = new MultiFileSource(orderItemsLocation);
+var model = pipe.Fit(dataSource);
 ```
 
-Additionally, we evaluate the accuracy of the model. This accuracy is measured using the [BinaryClassificationEvaluator](https://docs.microsoft.com/en-gb/dotnet/api/microsoft.ml.models.binaryclassificationevaluator?view=ml-dotnet), and the [Accuracy](https://en.wikipedia.org/wiki/Confusion_matrix) and [AUC](https://loneharoon.wordpress.com/2016/08/17/area-under-the-curve-auc-a-performance-metric/) metrics are displayed.
+Additionally, we evaluate the accuracy of the model. This accuracy is measured using the `BinaryClassificationContext`, and the [Accuracy](https://en.wikipedia.org/wiki/Confusion_matrix) and [AUC](https://loneharoon.wordpress.com/2016/08/17/area-under-the-curve-auc-a-performance-metric/) metrics are displayed.
+```csharp
+var metrics = ctx.Evaluate(data, r => r.Label, r => r.preds);
+```
 
 ### ML.NET: Model Prediction
 The model created in former step, is used to make recommendations for users. When the user logs in the website, his homepage will display first recommended products for him/her, based on previous purchases.
@@ -66,24 +85,50 @@ The source code of prediction core is in `src / Infrastructure / Services / `[Pr
 public async System.Threading.Tasks.Task<IEnumerable<string>> GetRecommendationsForUserAsync
     (string user, string[] products, int recommendationsInPage)
 {
-    var model = await PredictionModel.ReadAsync<SalesData, SalesPrediction>(modelLocation);
-    var crossPredictions = from product in products                                   
-                            select new SalesData { CustomerId = user, ProductId = product };
+var model = LoadModel(modelLocation);
 
-    var predictions = model.Predict(crossPredictions).ToArray();
+// Create all possible SalesData objects between (unique) CustomerId x ProductId (many)
+var crossUserProducts = from product in products
+                        select new SalesData { CustomerId = user, ProductId = product };
 
-    return predictions.Where(p => p.Recommendation.IsTrue)
-        .OrderByDescending(p => p.Probability)
-        .Select(p => p.ProductId)
-        .Take(recommendationsInPage);
+// Execute the recommendation model with previous generated data
+var predictions = crossUserProducts
+    .Select(crossUserProduct => model.Predict(crossUserProduct))
+    .ToArray();
+
+//Count how many recommended products the user gets (with more or less score..)
+var numberOfRecommendedProducts = predictions.Where(x => x.Recommendation).Select(x => x.Recommendation).Count();
+
+//Count how many recommended products the user gets (with more than 0.7 score..)
+var RecommendedProductsOverThreshold = (from p in predictions
+                                        orderby p.Score descending
+                                        where p.Recommendation && p.Score > 0.7
+                                        select new SalesPrediction { ProductId = p.ProductId, Score = p.Score, Recommendation = p.Recommendation });
+
+var numberOfRecommendedProductsOverThreshold = RecommendedProductsOverThreshold.Count();
+
+// Return (recommendationsInPage) product Ids ordered by Score
+return predictions
+    .Where(p => p.Recommendation)
+    .OrderByDescending(p => p.Score)
+    .Select(p => p.ProductId)
+    .Take(recommendationsInPage);
 }
 ```
 
-The method receives as parameters the user and the products we need to check. The method then creates `SalesData` objects (one object per product received as parameter, using always the same customer). The model returns the probability and the label (recommended / not recommended), so the method returns only recommended predictions, ordered by probability and only the first ones (taken `recommendationsInPage` predictions).
+The method receives as parameters the user and the products we need to check for posible recommendations. The method then creates `SalesData` objects (one per product / customer). The model returns the probability and the label (recommended / not recommended), so the method returns only recommended predictions, ordered by probability and only the first ones (taken `recommendationsInPage` predictions).
+
+### [optional] Model pre-processing 
+Before creating the model, we need to pre-process the original input data. This data is contained by the file `assets/inputs/orderItems.csv`.  The reason behind this is because we will use a method that is able to make only binary recommendations, and our Label feature (quantity) is a continuos variable. The pre-process will transform this continuous variable into a categorical variable with 2 states: recommend / not recommend (true / false).
+
+There are several methods for discretizing a continuous variable, in this case we will set a threshold, and then we will transform values over or equal the threshold to true (do recommend), otherwise, to false (do not recommend). In this case, the mean by product is used as a threshold. 
+
+Previous transformation is supported by the method `PreProcess()`. As result, we will add one column named `Recommend` holding Quantity as a discretized value (true / false). The pre-processed dataset will be saved as `assets/inputs/orderItemsPre.csv`.
+
 
 ## Run the web app with the recommendations
 
-When running the web app, in order to see the recomendations, you first need to authenticate with a demo user with these credentials:
+When running the web app, in order to see the recommendations, you first need to authenticate with a demo user with these credentials:
 
 User: demouser@microsoft.com
 
