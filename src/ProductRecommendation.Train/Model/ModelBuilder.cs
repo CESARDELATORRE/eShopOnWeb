@@ -12,6 +12,7 @@ using System.IO;
 using Microsoft.ML.Runtime;
 using Microsoft.ML.Runtime.Training;
 using Microsoft.ML.Trainers;
+using Microsoft.ML;
 
 namespace ProductRecommendation
 {
@@ -160,8 +161,6 @@ namespace ProductRecommendation
             ConsoleWriteHeader("Build and Train using Static API");
             Console.Out.WriteLine($"Input file: {orderItemsLocation}");
 
-            var ctx = new BinaryClassificationContext(env);
-
             ConsoleWriteHeader("Reading file ...");
             var reader = TextLoader.CreateReader(env,
                             c => (
@@ -172,26 +171,30 @@ namespace ProductRecommendation
                             separator: ',', hasHeader: true);
 
             FieldAwareFactorizationMachinePredictor pred = null;
+            var ctx = new BinaryClassificationContext(env);
 
             var est = reader.MakeNewEstimator()
                 .Append(row => (CustomerId_OHE: row.CustomerId.OneHotEncoding(), ProductId_OHE: row.ProductId.OneHotEncoding(), row.Label))
                 .Append(row => (Features: row.CustomerId_OHE.ConcatWith(row.ProductId_OHE), row.Label))
-                .Append(row => (row.Label, 
+                .Append(row => (row.Label,
                 preds: ctx.Trainers.FieldAwareFactorizationMachine(
-                    row.Label, 
-                    new[] { row.Features }, 
+                    row.Label,
+                    new[] { row.Features },
                     advancedSettings: ffmArguments => ffmArguments.Shuffle = false,
                     onFit: p => pred = p)));
+                //.Append(row => (row.Label, row.preds, PredictedLabel: row.preds.predictedLabel, Score: row.preds.score));
 
             var pipe = reader.Append(est);
 
             ConsoleWriteHeader("Training model for recommendations");
             var dataSource = new MultiFileSource(orderItemsLocation);
-            var model = pipe.Fit(dataSource);
 
-            var data = model.Read(dataSource);
+            //var model = pipe.Fit(dataSource);
+            var model = est.Fit(reader.Read(dataSource));
 
             // inspect data
+            //var data = model.Read(dataSource);
+            var data = model.Transform(reader.Read(dataSource));
             var trainData = data.AsDynamic;
             var columnNames = trainData.Schema.GetColumnNames().ToArray();
             var trainDataAsEnumerable = trainData.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
@@ -200,8 +203,24 @@ namespace ProductRecommendation
             var metrics = ctx.Evaluate(data, r => r.Label, r => r.preds);
             Console.WriteLine($"Accuracy is: {metrics.Accuracy}");
             Console.WriteLine($"AUC is: {metrics.Auc}");
-        }
 
+            using (var f = new FileStream(modelLocation, FileMode.Create))
+                //pred.SaveTo(env, f);
+                model.AsDynamic.SaveTo(env, f);
+
+            var trainPredictor = model.AsDynamic.MakePredictionFunction<SalesData, SalesPrediction>(env);
+            var trainPrediction = trainPredictor.Predict(new SalesData() { CustomerId = "295051dc-d109-4008-92e5-548b44b7175f", ProductId = "1020" });
+
+            ITransformer loadedModel;
+            //IDataReader<IMultiStreamSource> loadedModel;
+            using (var f = new FileStream(modelLocation, FileMode.Open))
+                loadedModel = TransformerChain.LoadFrom(env, f);
+            //loadedModel = CompositeDataReader.LoadFrom(env, f);
+
+            var loadedModelOutputColumnNames = loadedModel.GetOutputSchema(trainData.Schema).GetColumnNames();
+            var testPredictor = loadedModel.MakePredictionFunction<SalesData, SalesPrediction>(env);
+            var testPrediction = testPredictor.Predict(new SalesData() { CustomerId = "295051dc-d109-4008-92e5-548b44b7175f", ProductId = "1020" });
+        }
 
         protected PredictionFunction<SalesData, SalesPrediction> LoadModel(string modelLocation)
         {
