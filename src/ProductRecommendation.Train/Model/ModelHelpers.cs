@@ -1,10 +1,7 @@
-﻿using Microsoft.ML.Runtime;
-using Microsoft.ML.Runtime.Data;
-using Microsoft.ML.Runtime.Model;
+﻿using Microsoft.ML.Runtime.Data;
 using ProductRecommendation;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -31,6 +28,17 @@ namespace CustomerSegmentation.Model
             return location;
         }
 
+        public static IEnumerable<string> GetColumnNames (this ISchema schema) {
+            for (int i = 0; i < schema.ColumnCount; i++)
+            {
+                if (!schema.IsHidden(i))
+                    yield return schema.GetColumnName(i);
+            }
+        }
+    }
+
+    public static class ConsoleHelpers
+    {
         public static void ConsoleWriteHeader(params string[] lines)
         {
             var defaultColor = Console.ForegroundColor;
@@ -45,24 +53,27 @@ namespace CustomerSegmentation.Model
             Console.ForegroundColor = defaultColor;
         }
 
-        public static void SaveTo(this ICanSaveModel model, IHostEnvironment env, Stream outputStream)
+        public static void ConsolePressAnyKey()
         {
-            using (var ch = env.Start("Saving pipeline"))
-            {
-                using (var rep = RepositoryWriter.CreateNew(outputStream, ch))
-                {
-                    ch.Trace("Saving transformer chain");
-                    ModelSaveContext.SaveModel(rep, model, TransformerChain.LoaderSignature);
-                    rep.Commit();
-                }
-            }
+            var defaultColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(" ");
+            Console.WriteLine("Press any key to finish.");
+            Console.ReadKey();
         }
 
-        public static IEnumerable<string> GetColumnNames (this ISchema schema) {
-            for (int i = 0; i < schema.ColumnCount; i++)
+        public static void ConsoleWriteException(params string[] lines)
+        {
+            var defaultColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Red;
+            const string exceptionTitle = "EXCEPTION";
+            Console.WriteLine(" ");
+            Console.WriteLine(exceptionTitle);
+            Console.WriteLine(new String('#', exceptionTitle.Length));
+            Console.ForegroundColor = defaultColor;
+            foreach (var line in lines)
             {
-                if (!schema.IsHidden(i))
-                    yield return schema.GetColumnName(i);
+                Console.WriteLine(line);
             }
         }
     }

@@ -1,7 +1,7 @@
 ﻿using CustomerSegmentation.Model;
 using System;
 using System.IO;
-using System.Threading.Tasks;
+using static CustomerSegmentation.Model.ConsoleHelpers;
 
 namespace ProductRecommendation
 {
@@ -19,15 +19,14 @@ namespace ProductRecommendation
             {
                 var modelBuilder = new ModelBuilder(salesPreprocessedCsv, modelZip);
                 //modelBuilder.PreProcess(salesOriginalCsv);
-                //modelBuilder.BuildAndTrainEstimatorAPI();
                 modelBuilder.BuildAndTrainStaticApi();
             }
             catch (Exception ex)
             {
-                Console.Out.WriteLine(ex.Message);
+                ConsoleWriteException(ex.Message);
             }
 
-             Console.ReadKey();
+            ConsolePressAnyKey();
         }
     }
 }

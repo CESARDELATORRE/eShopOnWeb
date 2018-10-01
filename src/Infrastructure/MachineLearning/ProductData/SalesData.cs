@@ -16,7 +16,7 @@ namespace ProductRecommendation.Train.ProductData
 
         public string ProductId { get; set; }
 
-        public int Quantity { get; set; }
+        public float Quantity { get; set; }
 
         public static IEnumerable<SalesData> ReadFromCsv(string file)
         {
@@ -30,11 +30,5 @@ namespace ProductRecommendation.Train.ProductData
                     Quantity = int.Parse(x[2])
                 });
         }
-    }
-
-    public class SalesRecommendationData : SalesData
-    {
-        [ColumnName("Label")]
-        public bool Recommendation { get; set; }
     }
 }

@@ -5,6 +5,17 @@ namespace ProductRecommendation.Train.ProductData
 {
     public class SalesPrediction
     {
+        public SalesPrediction() { }
+
+        public SalesPrediction(SalesPrediction source)
+        {
+            CustomerId = source.CustomerId;
+            ProductId = source.ProductId;
+            Recommendation = source.Recommendation;
+            Score = source.Score;
+            Probability = source.Probability;
+        }
+
         public string CustomerId { get; set; }
 
         public string ProductId { get; set; }

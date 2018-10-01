@@ -3,14 +3,11 @@ using ProductRecommendation.Train.ProductData;
 using System.Collections.Generic;
 using System.Linq;
 using System;
-using static CustomerSegmentation.Model.ModelHelpers;
+using static CustomerSegmentation.Model.ConsoleHelpers;
 using Microsoft.ML.Runtime.Data;
 using Microsoft.ML.Runtime.Api;
 using Microsoft.ML.Runtime.FactorizationMachine;
-using Microsoft.ML.Core.Data;
 using System.IO;
-using Microsoft.ML.Runtime;
-using Microsoft.ML.Runtime.Training;
 using Microsoft.ML.Trainers;
 using Microsoft.ML;
 
@@ -27,43 +24,6 @@ namespace ProductRecommendation
             this.orderItemsLocation = orderItemsLocation;
             this.modelLocation = modelLocation;
             env = new LocalEnvironment(seed:1);  //Seed set to any number so you have a deterministic environment
-        }
-
-        public void BuildAndTrainEstimatorAPI()
-        {
-            var (trainData, pipe) = BuildModel(orderItemsLocation);
-
-            TransformerChain<ITransformer> model = TrainModel(pipe, trainData);
-
-            if (!string.IsNullOrEmpty(modelLocation))
-            {
-                SaveModel(model, modelLocation);
-            }
-
-            // REVIEW!!
-            // metrics do not work (always zero)
-            //EvaluateModel(model.Transform(trainData));
-        }
-
-        public void Test()
-        {
-            var loadedModel = LoadModel(modelLocation);
-            var predictions = PredictDataUsingModel(orderItemsLocation, loadedModel).ToArray();
-        }
-
-        private void SaveModel(TransformerChain<ITransformer> model, string modelLocation)
-        {
-            ConsoleWriteHeader("Save model to local file");
-            ModelHelpers.DeleteAssets(modelLocation);
-            using (var fs = File.Create(modelLocation))
-                model.SaveTo(env, fs);
-            Console.WriteLine($"Model saved: {modelLocation}");
-        }
-
-        private static TransformerChain<ITransformer> TrainModel(EstimatorChain<ITransformer> pipe, IDataView dataView)
-        {
-            ConsoleWriteHeader("Training recommendation model");
-            return pipe.Fit(dataView);
         }
 
         public IEnumerable<SalesRecommendationData> PreProcess(string orderItemsLocation)
@@ -114,48 +74,6 @@ namespace ProductRecommendation
             return data;
         }
 
-        protected (IDataView, EstimatorChain<ITransformer>) BuildModel(string orderItemsLocation)
-        {
-            ConsoleWriteHeader("Build model pipeline");
-
-            const string customerColumn = nameof(SalesRecommendationData.CustomerId);
-            const string customerColumnOneHotEnc = customerColumn + "_OHE";
-            const string productColumn = nameof(SalesRecommendationData.ProductId);
-            const string productColumnOneHotEnc = productColumn + "_OHE";
-            const string featuresColumn = DefaultColumnNames.Features;
-            const string labelColumn = DefaultColumnNames.Label;
-
-            var reader = TextLoader.CreateReader(env,
-                            c => (
-                                CustomerId: c.LoadText(0),
-                                ProductId: c.LoadText(1),
-                                Quantity: c.LoadFloat(2),
-                                Label: c.LoadBool(3)),
-                            separator: ',', hasHeader: true);
-
-            var pipe = new CategoricalEstimator(env, new[] {
-                new CategoricalEstimator.ColumnInfo(productColumn, productColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
-                new CategoricalEstimator.ColumnInfo(customerColumn, customerColumnOneHotEnc, CategoricalTransform.OutputKind.Ind),
-            }).Append(new ConcatEstimator(env, featuresColumn, productColumnOneHotEnc, customerColumnOneHotEnc));
-
-            IEstimator<ITransformer> est = new FieldAwareFactorizationMachineTrainer(env, labelColumn, new[] { featuresColumn },
-                advancedSettings: s =>
-                {
-                    s.Shuffle = false;
-                    s.Iters = 3;
-                    s.Caching = Microsoft.ML.Runtime.EntryPoints.CachingOptions.Memory;
-                });
-
-            var dataview = reader.Read(new MultiFileSource(orderItemsLocation)).AsDynamic;
-
-            // inspect data
-            var trainData = pipe.Fit(dataview).Transform(dataview);
-            var columnNames = trainData.Schema.GetColumnNames().ToArray();
-            var trainDataAsEnumerable = trainData.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
-
-            return (dataview, pipe.Append(est));
-        }
-
         public void BuildAndTrainStaticApi()
         {
             ConsoleWriteHeader("Build and Train using Static API");
@@ -182,19 +100,13 @@ namespace ProductRecommendation
                     new[] { row.Features },
                     advancedSettings: ffmArguments => ffmArguments.Shuffle = false,
                     onFit: p => pred = p)));
-                //.Append(row => (row.Label, row.preds, PredictedLabel: row.preds.predictedLabel, Score: row.preds.score));
-
-            var pipe = reader.Append(est);
 
             ConsoleWriteHeader("Training model for recommendations");
-            var dataSource = new MultiFileSource(orderItemsLocation);
-
-            //var model = pipe.Fit(dataSource);
-            var model = est.Fit(reader.Read(dataSource));
+            var dataSource = reader.Read(new MultiFileSource(orderItemsLocation));
+            var model = est.Fit(dataSource);
 
             // inspect data
-            //var data = model.Read(dataSource);
-            var data = model.Transform(reader.Read(dataSource));
+            var data = model.Transform(dataSource);
             var trainData = data.AsDynamic;
             var columnNames = trainData.Schema.GetColumnNames().ToArray();
             var trainDataAsEnumerable = trainData.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
@@ -204,96 +116,11 @@ namespace ProductRecommendation
             Console.WriteLine($"Accuracy is: {metrics.Accuracy}");
             Console.WriteLine($"AUC is: {metrics.Auc}");
 
+            ConsoleWriteHeader("Save model to local file");
+            ModelHelpers.DeleteAssets(modelLocation);
             using (var f = new FileStream(modelLocation, FileMode.Create))
-                //pred.SaveTo(env, f);
                 model.AsDynamic.SaveTo(env, f);
-
-            var trainPredictor = model.AsDynamic.MakePredictionFunction<SalesData, SalesPrediction>(env);
-            var trainPrediction = trainPredictor.Predict(new SalesData() { CustomerId = "295051dc-d109-4008-92e5-548b44b7175f", ProductId = "1020" });
-
-            ITransformer loadedModel;
-            //IDataReader<IMultiStreamSource> loadedModel;
-            using (var f = new FileStream(modelLocation, FileMode.Open))
-                loadedModel = TransformerChain.LoadFrom(env, f);
-            //loadedModel = CompositeDataReader.LoadFrom(env, f);
-
-            var loadedModelOutputColumnNames = loadedModel.GetOutputSchema(trainData.Schema).GetColumnNames();
-            var testPredictor = loadedModel.MakePredictionFunction<SalesData, SalesPrediction>(env);
-            var testPrediction = testPredictor.Predict(new SalesData() { CustomerId = "295051dc-d109-4008-92e5-548b44b7175f", ProductId = "1020" });
-        }
-
-        protected PredictionFunction<SalesData, SalesPrediction> LoadModel(string modelLocation)
-        {
-            ConsoleWriteHeader("Load Model");
-            Console.WriteLine($"Model file location: {modelLocation}");
-            using (var file = File.OpenRead(modelLocation))
-            {
-                return TransformerChain
-                    .LoadFrom(env, file)
-                    .MakePredictionFunction<SalesData, SalesPrediction>(env);
-            }
-        }
-
-        protected IEnumerable<SalesPrediction> PredictDataUsingModel(string testFileLocation, PredictionFunction<SalesData, SalesPrediction> model)
-        {
-            ConsoleWriteHeader("Predict data");
-            var testData = SalesData.ReadFromCsv(testFileLocation);
-            foreach (var item in testData)
-            {
-                yield return model.Predict(item);
-            }
-            Console.WriteLine($"Number of predictions: {testData.Count()}");
-        }
-
-        protected void EvaluateModel(IDataView salesData)
-        {
-            ConsoleWriteHeader("Evaluate model");
-
-            var evaluator = new BinaryClassifierEvaluator(env, new BinaryClassifierEvaluator.Arguments());
-            var metrics = evaluator.Evaluate(env, salesData);
-
-            Console.WriteLine("Accuracy is: " + metrics.Accuracy);
-            Console.WriteLine("AUC is: " + metrics.Auc);
-        }
-    }
-
-    /// <summary>
-    /// This class is based on code from ML.NET
-    /// </summary>
-    public static class BinaryClassifierEvaluatorExtensions
-    {
-        public static SimpleBinaryClassificationMetrics Evaluate(this BinaryClassifierEvaluator self, IHostEnvironment env, IDataView data, string labelColumn = DefaultColumnNames.Label,
-            string probabilityColumn = DefaultColumnNames.Probability)
-        {
-            var ci = EvaluateUtils.GetScoreColumnInfo(env, data.Schema, null, DefaultColumnNames.Score, MetadataUtils.Const.ScoreColumnKind.BinaryClassification);
-            var rmd = BuildRoleMappedData(data, labelColumn, probabilityColumn, ci.Name);
-
-            var metricsDict = self.Evaluate(rmd);
-            return BuildMetrics(env, metricsDict);
-        }
-
-        private static RoleMappedData BuildRoleMappedData(IDataView data, string labelColumn, string probabilityColumn, string scoreColumn)
-        {
-            var map = new KeyValuePair<RoleMappedSchema.ColumnRole, string>[]
-            {
-                RoleMappedSchema.CreatePair(MetadataUtils.Const.ScoreValueKind.Probability, probabilityColumn),
-                RoleMappedSchema.CreatePair(MetadataUtils.Const.ScoreValueKind.Score, scoreColumn)
-            };
-            var rmd = new RoleMappedData(data, labelColumn, DefaultColumnNames.Features, opt: true, custom: map);
-            return rmd;
-        }
-
-        private static SimpleBinaryClassificationMetrics BuildMetrics(IHostEnvironment env, Dictionary<string, IDataView> metricsDict)
-        {
-            var overallMetrics = metricsDict[MetricKinds.OverallMetrics];
-            var metricsEnumerable = overallMetrics.AsEnumerable<SimpleBinaryClassificationMetrics>(env, true, ignoreMissingColumns: true);
-            return metricsEnumerable.Single();
-        }
-
-        public sealed class SimpleBinaryClassificationMetrics
-        {
-            public double Auc { get; private set; }
-            public double Accuracy { get; private set; }
+            Console.WriteLine($"Model saved: {modelLocation}");
         }
     }
 }
