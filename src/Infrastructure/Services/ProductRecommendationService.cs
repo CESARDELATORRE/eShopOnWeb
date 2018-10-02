@@ -44,7 +44,7 @@ namespace Microsoft.eShopWeb.Infrastructure.Services
             //Count how many recommended products the user gets (with more than 0.7 score..)
             var RecommendedProductsOverThreshold = (from p in predictions
                                                     orderby p.Score descending
-                                                    //where p.Recommendation && p.Score > 0.7
+                                                    where p.Recommendation && p.Score > 0.7
                                                     select new SalesPrediction { ProductId = p.ProductId, Score = p.Score, Recommendation = p.Recommendation });
 
             var numberOfRecommendedProductsOverThreshold = RecommendedProductsOverThreshold.Count();
