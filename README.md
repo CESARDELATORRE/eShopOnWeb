@@ -26,15 +26,19 @@ After executing the preprocessing step, a file name `orderItemsPre.csv` will be 
 ### ML.NET: Model creation
 The model training source code is located at `src / ProductRecommentation.Train / Model / `[ModelBuilder.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/ProductRecommendation.Train/Model/ModelBuilder.cs).
 
-The beginning of the machine learning pipeline starts defining the data source. In this case, it will be based on text (which will be stored in files), and `TextLoader.CreateReader()` is used to define a generic loader.
+The beginning of the machine learning pipeline starts defining the data source. In this case, it will be based on text (which will be stored in files), and `TextLoader` is used to define a generic loader.
 ```csharp
-var reader = TextLoader.CreateReader(env,
-                c => (
-                    CustomerId: c.LoadText(0),
-                    ProductId: c.LoadText(1),
-                    Quantity: c.LoadFloat(2),
-                    Label: c.LoadBool(3)),
-                separator: ',', hasHeader: true);
+ var reader = new TextLoader(env, new TextLoader.Arguments
+ {
+     Column = new[] {
+         new TextLoader.Column("CustomerId", DataKind.Text, 0 ),
+         new TextLoader.Column("ProductId", DataKind.Text, 1 ), 
+         new TextLoader.Column("Quantity", DataKind.R4, 2 ),
+         new TextLoader.Column("Label", DataKind.Bool, 3 )
+     },
+     HasHeader = true,
+     Separator = ","
+ });
 ```
 The schema defined in the loader follows the schema the the text must follow: lines, in which each field is separated by commas and with a default header in the first line, such as in this example:
 ```csv
@@ -47,34 +51,27 @@ CustomerId,ProductId,Quantity,Label
 
 Then, we define the estimator chain, implemented as:
 ```csharp
-var est = reader.MakeNewEstimator()
-    .Append(row => (CustomerId_OHE: row.CustomerId.OneHotEncoding(), ProductId_OHE: row.ProductId.OneHotEncoding(), row.Label))
-    .Append(row => (Features: row.CustomerId_OHE.ConcatWith(row.ProductId_OHE), row.Label))
-    .Append(row => (row.Label, 
-    preds: ctx.Trainers.FieldAwareFactorizationMachine(
-        row.Label, 
-        new[] { row.Features }, 
-        advancedSettings: ffmArguments => ffmArguments.Shuffle = false,
-        onFit: p => pred = p)));
-
-var pipe = reader.Append(est);
+ var estimator = new CategoricalEstimator(env, new[] {
+             new CategoricalEstimator.ColumnInfo("CustomerId", "CustomerId_OHE", CategoricalTransform.OutputKind.Ind),
+             new CategoricalEstimator.ColumnInfo("ProductId", "ProductId_OHE", CategoricalTransform.OutputKind.Ind) })
+ .Append(new ConcatEstimator(env, "Features", new[] { "ProductId_OHE", "CustomerId_OHE" }))
+ .Append(new FieldAwareFactorizationMachineTrainer(env, "Label", new[] { "Features" }, advancedSettings: p =>p.Shuffle = false));
 ```
 
 The estimation pipe is supported by what is called the **Static API**. Using this API, transformers and learners are applied  naturally as extensions method to current types, making more easy to discover the API using strong types:
-* `.MakeEstimator()`: Create an estimator pipe.
-* `.OneHotEncoding()`: CustomerId and ProductId are transformed using [One Hot Encoding](https://en.wikipedia.org/wiki/One-hot).
-* `.ConcatWith()`: Data needs to be combined into a single column (named `Features`) as a prior step before the learner starts executing.
-* `.FieldAwareFactorizationMachine()`: The learner used by the pipeline is called [Field-aware Factorization Machine](https://github.com/wschin/fast-ffm/blob/master/fast-ffm.pdf), this algorithm evaluates the interaction between several features (in our case, CustomerId and ProductId), and it can be used with [sparse data](https://en.wikipedia.org/wiki/Sparse_matrix).
+* `CategoricalEstimator`: CustomerId and ProductId are transformed using [One Hot Encoding](https://en.wikipedia.org/wiki/One-hot).
+* `ConcatEstimator`: Data needs to be combined into a single column (named `Features`) as a prior step before the learner starts executing.
+* `FieldAwareFactorizationMachineTrainer`: The learner used by the pipeline is called [Field-aware Factorization Machine](https://github.com/wschin/fast-ffm/blob/master/fast-ffm.pdf), this algorithm evaluates the interaction between several features (in our case, CustomerId and ProductId), and it can be used with [sparse data](https://en.wikipedia.org/wiki/Sparse_matrix).
 
-After building the pipeline, we train the recommendation model using the training file:
+After building the estimator, we train the recommendation model using the training file:
 ```csharp
-var dataSource = new MultiFileSource(orderItemsLocation);
-var model = pipe.Fit(dataSource);
+ var dataSource = reader.Read(new MultiFileSource(orderItemsLocation));
+ var model = estimator.Fit(dataSource);
 ```
 
 Additionally, we evaluate the accuracy of the model. This accuracy is measured using the `BinaryClassificationContext`, and the [Accuracy](https://en.wikipedia.org/wiki/Confusion_matrix) and [AUC](https://loneharoon.wordpress.com/2016/08/17/area-under-the-curve-auc-a-performance-metric/) metrics are displayed.
 ```csharp
-var metrics = ctx.Evaluate(data, r => r.Label, r => r.preds);
+ var metrics = ctx.Evaluate(data, "Label");
 ```
 
 ### ML.NET: Model Prediction
@@ -82,37 +79,36 @@ The model created in former step, is used to make recommendations for users. Whe
 The source code of prediction core is in `src / Infrastructure / Services / `[ProductRecommendationService.cs](https://github.com/CESARDELATORRE/eShopOnWeb/blob/master/src/Infrastructure/Services/ProductRecommendationService.cs), inside the method `GetRecommendationsForUserAsync()`.
 
 ```csharp
-public async System.Threading.Tasks.Task<IEnumerable<string>> GetRecommendationsForUserAsync
-    (string user, string[] products, int recommendationsInPage)
-{
-var model = LoadModel(modelLocation);
+ public async System.Threading.Tasks.Task<IEnumerable<string>> GetRecommendationsForUserAsync(string user, string[] products, int recommendationsInPage)
+ {
+     var model = LoadModel(modelLocation);
 
-// Create all possible SalesData objects between (unique) CustomerId x ProductId (many)
-var crossUserProducts = from product in products
-                        select new SalesData { CustomerId = user, ProductId = product };
+     // Create all possible SalesData objects between (unique) CustomerId x ProductId (many)
+     var crossUserProducts = from product in products
+                             select new SalesData { CustomerId = user, ProductId = product };
 
-// Execute the recommendation model with previous generated data
-var predictions = crossUserProducts
-    .Select(crossUserProduct => model.Predict(crossUserProduct))
-    .ToArray();
+     // Execute the recommendation model with previous generated data
+     var predictions = crossUserProducts
+         .Select(crossUserProduct => model.Predict(crossUserProduct))
+         .ToArray();
 
-//Count how many recommended products the user gets (with more or less score..)
-var numberOfRecommendedProducts = predictions.Where(x => x.Recommendation).Select(x => x.Recommendation).Count();
+     //Count how many recommended products the user gets (with more or less score..)
+     var numberOfRecommendedProducts = predictions.Where(x => x.Recommendation).Select(x => x.Recommendation).Count();
 
-//Count how many recommended products the user gets (with more than 0.7 score..)
-var RecommendedProductsOverThreshold = (from p in predictions
-                                        orderby p.Score descending
-                                        where p.Recommendation && p.Score > 0.7
-                                        select new SalesPrediction { ProductId = p.ProductId, Score = p.Score, Recommendation = p.Recommendation });
+     //Count how many recommended products the user gets (with more than 0.7 score..)
+     var RecommendedProductsOverThreshold = (from p in predictions
+                                             orderby p.Score descending
+                                             where p.Recommendation && p.Score > 0.7
+                                             select new SalesPrediction { ProductId = p.ProductId, Score = p.Score, Recommendation = p.Recommendation });
+ 
+     var numberOfRecommendedProductsOverThreshold = RecommendedProductsOverThreshold.Count();
 
-var numberOfRecommendedProductsOverThreshold = RecommendedProductsOverThreshold.Count();
-
-// Return (recommendationsInPage) product Ids ordered by Score
-return predictions
-    .Where(p => p.Recommendation)
-    .OrderByDescending(p => p.Score)
-    .Select(p => p.ProductId)
-    .Take(recommendationsInPage);
+     // Return (recommendationsInPage) product Ids ordered by Score
+     return predictions
+         .Where(p => p.Recommendation)
+         .OrderByDescending(p => p.Score)
+         .Select(p => p.ProductId)
+         .Take(recommendationsInPage);
 }
 ```
 

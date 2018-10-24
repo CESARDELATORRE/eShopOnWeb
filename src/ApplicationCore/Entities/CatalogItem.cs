@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
@@ -31,7 +32,7 @@ namespace Microsoft.eShopWeb.ApplicationCore.Entities
                     Description = x[3],
                     Name = x[4],
                     PictureUri = x[5],
-                    Price = decimal.Parse(x[6])                    
+                    Price = decimal.Parse(x[6], NumberStyles.Currency, CultureInfo.InvariantCulture)                    
                 });
         }
 

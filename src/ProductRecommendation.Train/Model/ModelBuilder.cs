@@ -122,5 +122,53 @@ namespace ProductRecommendation
                 model.AsDynamic.SaveTo(env, f);
             Console.WriteLine($"Model saved: {modelLocation}");
         }
+
+        public void BuildAndTrainDynamicApi()
+        {
+            ConsoleWriteHeader("Build and Train using Static API");
+            Console.Out.WriteLine($"Input file: {orderItemsLocation}");
+
+            ConsoleWriteHeader("Reading file ...");
+
+            var reader = new TextLoader(env, new TextLoader.Arguments
+            {
+                Column = new[] {
+                    new TextLoader.Column("CustomerId", DataKind.Text, 0 ),
+                    new TextLoader.Column("ProductId", DataKind.Text, 1 ),
+                    new TextLoader.Column("Quantity", DataKind.R4, 2 ),
+                    new TextLoader.Column("Label", DataKind.Bool, 3 )
+                },
+                HasHeader = true,
+                Separator = ","
+            });
+
+            var estimator = new CategoricalEstimator(env, new[] {
+                            new CategoricalEstimator.ColumnInfo("CustomerId", "CustomerId_OHE", CategoricalTransform.OutputKind.Ind),
+                            new CategoricalEstimator.ColumnInfo("ProductId", "ProductId_OHE", CategoricalTransform.OutputKind.Ind) })
+                .Append(new ConcatEstimator(env, "Features", new[] { "ProductId_OHE", "CustomerId_OHE" }))
+                .Append(new FieldAwareFactorizationMachineTrainer(env, "Label", new[] { "Features" }, advancedSettings: p =>p.Shuffle = false));
+
+            var ctx = new BinaryClassificationContext(env);
+
+            ConsoleWriteHeader("Training model for recommendations");
+            var dataSource = reader.Read(new MultiFileSource(orderItemsLocation));
+            var model = estimator.Fit(dataSource);
+
+            // inspect data
+            var data = model.Transform(dataSource);
+            var columnNames = data.Schema.GetColumnNames().ToArray();
+            var trainDataAsEnumerable = data.AsEnumerable<SalesPipelineData>(env, false).Take(10).ToArray();
+
+            ConsoleWriteHeader("Evaluate model");
+            var metrics = ctx.Evaluate(data, "Label");
+            Console.WriteLine($"Accuracy is: {metrics.Accuracy}");
+            Console.WriteLine($"AUC is: {metrics.Auc}");
+
+            ConsoleWriteHeader("Save model to local file");
+            ModelHelpers.DeleteAssets(modelLocation);
+            using (var f = new FileStream(modelLocation, FileMode.Create))
+                model.SaveTo(env, f);
+            Console.WriteLine($"Model saved: {modelLocation}");
+        }
     }
 }
